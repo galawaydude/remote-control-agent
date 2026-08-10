@@ -3,7 +3,7 @@
 ## Requirements
 
 - Linux or macOS
-- Node at the version in [`.nvmrc`](../.nvmrc)
+- Node at or above the version in [`.nvmrc`](../.nvmrc)
 - tmux 3.7 or newer
 - A C++ toolchain on Linux
 - Tailscale on the host only when using the public Funnel link
