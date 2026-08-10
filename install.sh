@@ -137,14 +137,12 @@ tmux_version_ok() {
 	((major > TMUX_MIN_MAJOR || (major == TMUX_MIN_MAJOR && minor >= TMUX_MIN_MINOR)))
 }
 
-# `node -v` prints "v24.18.0"; $2 is the major read out of .nvmrc. Unparseable
-# fails, and there is no over-install to pay for it: the caller dies quoting what
-# it found, which is a better message than a build that fails later.
+# Compare every numeric component: Node 22.17 does not have the unflagged type
+# stripping that the tests and development commands use, while 22.18 does.
 node_version_ok() {
-	local major="${1#v}" want="$2"
-	major="${major%%.*}"
-	[[ $major =~ ^[0-9]+$ ]] || return 1
-	((major >= want))
+	local actual="${1#v}" minimum="${2#v}"
+	[[ $actual =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && $minimum =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+	[ "$(printf '%s\n%s\n' "$minimum" "$actual" | sort -V | head -n 1)" = "$minimum" ]
 }
 
 # The one definition of how to get a new enough tmux by hand. Printed both where
@@ -731,10 +729,11 @@ self_test() {
 	check 1 tmux_version_ok 'tmux 2.9'
 	check 1 tmux_version_ok 'tmux unknown'
 	check 1 tmux_version_ok ''
-	check 0 node_version_ok 'v24.18.0' 24
-	check 0 node_version_ok 'v25.0.0' 24
-	check 1 node_version_ok 'v22.14.0' 24
-	check 1 node_version_ok 'not a version' 24
+	check 0 node_version_ok 'v22.18.0' 'v22.18.0'
+	check 0 node_version_ok 'v22.23.1' 'v22.18.0'
+	check 0 node_version_ok 'v24.0.0' 'v22.18.0'
+	check 1 node_version_ok 'v22.17.9' 'v22.18.0'
+	check 1 node_version_ok 'not a version' 'v22.18.0'
 	check_out() {
 		want=$1
 		shift
@@ -1282,11 +1281,11 @@ main() {
 	# The symlink below points at this path, so a relative --dir must not survive.
 	TARGET_DIR="$PWD"
 
-	NODE_MAJOR=$(sed 's/^v//; s/\..*//' .nvmrc)
+	NODE_MIN=$(cat .nvmrc)
 	command -v node >/dev/null 2>&1 ||
-		die "Node $NODE_MAJOR or newer is required. Install it from https://nodejs.org, or with nvm: nvm install $(cat .nvmrc)"
-	node_version_ok "$(node -v)" "$NODE_MAJOR" ||
-		die "Node $NODE_MAJOR or newer is required; found $(node -v). With nvm: nvm install $(cat .nvmrc)"
+		die "Node ${NODE_MIN#v} or newer is required. Install it from https://nodejs.org, or with nvm: nvm install $NODE_MIN"
+	node_version_ok "$(node -v)" "$NODE_MIN" ||
+		die "Node ${NODE_MIN#v} or newer is required; found $(node -v). With nvm: nvm install $NODE_MIN"
 
 	# What, if anything, needs installing is decided before anything is installed,
 	# so the whole cost is on screen in one place, once, before the one prompt.
