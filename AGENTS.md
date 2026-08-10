@@ -49,6 +49,10 @@ Everything CONTRIBUTING lists is runnable locally.
   `tsc --noEmit` at the repo root is not configured — use `npm run typecheck`.
 - **TypeScript is pinned to 5.x.** TypeScript 7 is released but `typescript-eslint` still
   peers on `<6.1.0`; upgrading TS ahead of that breaks `npm install`.
+- **Node 22.18 is the floor, not the newest development release.** `node:sqlite` needs 22.x
+  and the test suite's unflagged TypeScript execution needs 22.18. `.nvmrc` and CI run that
+  floor so a newer-only API cannot slip in; `install.sh` compares the complete version because
+  accepting 22.17 as “Node 22” fails later instead of helping.
 - **npm 12 blocks dependency install scripts by default.** A dependency that silently fails
   to build is usually this; approve it with `npm install-scripts approve <pkg>`, which writes
   a version-pinned entry into the root `package.json`'s `allowScripts` — so bumping such a
