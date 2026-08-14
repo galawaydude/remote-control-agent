@@ -362,15 +362,17 @@ export function mapRecord(record: unknown, warn: Warn = () => {}): Mapped {
 /**
  * Tools tether will never hold the agent on, whatever the user has open.
  *
- * `PreToolUse` fires for **every** tool call, and nothing in its payload says
- * whether Claude Code was going to prompt about it — verified on 2.1.220: a
- * `Read` the permission rules auto-allow produces exactly the same hook as a
- * `Bash` that opens a dialog, and `~/.claude/sessions/<pid>.json` reads `busy`
- * throughout either. So a hold applied to everything costs the timeout on every
- * auto-allowed call, and an agent reading twenty files with a phone open would
- * crawl. This list is the cheap half of the answer (the other half is that
- * nothing is held with nobody watching): the tools that are read-only, fire in
- * bursts, and are approved out of the box.
+ * `PreToolUse` fires for **every** tool call, and its payload does not say
+ * whether Claude Code was going to prompt about that particular call — verified
+ * on 2.1.220: a `Read` the permission rules auto-allow produces exactly the same
+ * hook as a `Bash` that opens a dialog, and `~/.claude/sessions/<pid>.json` reads
+ * `busy` throughout either. It does name the broader `permission_mode`; modes
+ * where Claude Code, rather than a person, owns the decision are skipped below
+ * before this list is consulted. So a hold applied to everything else costs the
+ * timeout on every auto-allowed call, and an agent reading twenty files with a
+ * phone open would crawl. This list is the cheap half of the answer (the other
+ * half is that nothing is held with nobody watching): the tools that are
+ * read-only, fire in bursts, and are approved out of the box.
  *
  * Deliberately a *skip* list rather than a hold list. A tool tether has never
  * heard of — an MCP server's, or one Claude Code ships next month — is held,
@@ -395,6 +397,10 @@ export const NEVER_HELD = new Set([
   'WebSearch',
 ]);
 
+/** Modes whose own policy must run before a person is asked. Holding their
+ * `PreToolUse` would pre-empt that policy and turn every tool into a prompt. */
+const PROVIDER_DECIDES = new Set(['auto', 'dontAsk', 'bypassPermissions']);
+
 export function mapHook(
   payload: unknown,
   warn: Warn = () => {},
@@ -417,7 +423,10 @@ export function mapHook(
         signal: 'pending',
         // `perhaps`, never `prompting`: a `PreToolUse` says nothing about
         // whether Claude Code was going to ask. See `HoldBasis`.
-        hold: NEVER_HELD.has(tool) ? 'never' : 'perhaps',
+        hold:
+          PROVIDER_DECIDES.has(str(payload['permission_mode']) ?? '') || NEVER_HELD.has(tool)
+            ? 'never'
+            : 'perhaps',
         // `id` is not a transcript uuid and must not look like one: this event
         // never enters the `seq` stream, and the client keys it by `callId`.
         e: {

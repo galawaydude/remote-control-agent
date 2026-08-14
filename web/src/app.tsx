@@ -661,26 +661,33 @@ function Login({ onDone }: { onDone: () => void }) {
   };
 
   return (
-    <main class="centre">
-      <form class="card" onSubmit={submit}>
-        <h1 class="wordmark">Remote Control Agent</h1>
-        <p class="tagline">Your coding agents, on your machine, from anywhere.</p>
-        <label for="password">Password</label>
-        <input
-          id="password"
-          type="password"
-          autocomplete="current-password"
-          // The only field on the only screen; not focusing it costs a tap.
-          autofocus
-          value={password}
-          onInput={(event) => setPassword((event.target as HTMLInputElement).value)}
-        />
+    <main class="centre login">
+      <form class="card login-card" onSubmit={submit}>
+        <div class="login-head">
+          <p class="login-kicker">
+            <span aria-hidden="true" /> Private access
+          </p>
+          <h1 class="wordmark">Remote Control Agent</h1>
+          <p class="tagline">Your coding agents, on your machine, from anywhere.</p>
+        </div>
+        <div class="login-field">
+          <label for="password">Password</label>
+          <input
+            id="password"
+            type="password"
+            autocomplete="current-password"
+            // The only field on the only screen; not focusing it costs a tap.
+            autofocus
+            value={password}
+            onInput={(event) => setPassword((event.target as HTMLInputElement).value)}
+          />
+        </div>
         {error !== null && (
           <p class="error" role="alert">
             {error}
           </p>
         )}
-        <button type="submit" class="primary" disabled={busy || password === ''}>
+        <button type="submit" class="primary login-submit" disabled={busy || password === ''}>
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
       </form>

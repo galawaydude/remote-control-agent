@@ -128,8 +128,9 @@ const CLAUDE_AXES: readonly Axis[] = [
         label: 'Decide for me',
         lowers:
           'A model decides which of Claude Code’s permission prompts to approve, ' +
-          'including commands. Most of what would have reached you as an Approve or ' +
-          'Deny here is answered without you.',
+          'including commands. Remote Control Agent leaves those calls to Claude Code ' +
+          'instead of stopping them for its own Approve or Deny buttons. If Claude Code ' +
+          'still stops on one, answer it in the terminal.',
       },
     ],
   },

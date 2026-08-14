@@ -33,7 +33,7 @@
  * outdoors, so every control is at least 44px and every foreground token clears
  * 5.6:1 on *every* surface it is used on — including the translucent fill a
  * chip or a tag lays down for itself — rather than only on the darkest one. The
- * measured worst case across all of them is 5.69:1 and most are past 6.5:1. The
+ * measured worst case across all of them is 5.86:1 and most are past 6.5:1. The
  * two things a thumb reaches for — the accessory bar and "New session" — sit at
  * the bottom of the screen rather than the top.
  *
@@ -52,26 +52,30 @@
      meant to recede and the words on it are what should be seen. Cool-neutral
      rather than pure grey, which is what lets one amber read as a signal
      instead of as a second theme colour. */
-  --bg: #21242a;
-  --panel: #262a30;
-  --raise: #2e323a;
-  --line: #333842;
-  --line-lit: #454b57;
+  --page: #17181a;
+  --bg: #1c1d1f;
+  --panel: #232427;
+  --raise: #2a2b2e;
+  --inset: #1f2022;
+  --field: #2b2c2f;
+  --hover: #313236;
+  --line: #2e3033;
+  --line-lit: #3a3c40;
 
-  --fg: #eceef2; /* 13.4:1 on --bg, 11.1:1 on --raise */
-  --muted: #b3b9c4; /* 7.9:1 on --bg, 6.5:1 on --raise */
+  --fg: #eceef2; /* 14.5:1 on --bg, 12.2:1 on --raise */
+  --muted: #b3b9c4; /* 8.6:1 on --bg, 7.2:1 on --raise */
   /* The floor, used only for machine detail. Set against `--raise` rather than
      against `--bg`: it lands on all three surfaces, and a token chosen on the
      darkest one is below the floor everywhere it is actually read. */
-  --dim: #a6adb8; /* 6.9:1 on --bg, 6.4:1 on --panel, 5.7:1 on --raise */
+  --dim: #a6adb8; /* 7.5:1 on --bg, 6.9:1 on --panel, 6.3:1 on --raise */
 
   /* Amber is the human. It kept two tokens on the light theme because bright
      amber on white is 1.8:1 and every border, spine and word had to be a
-     darkened second value. On a dark surface it simply reads — 8.8:1 on --bg,
-     7.3:1 on --raise — so the ink *is* the fill. Both names stay, because the
+     darkened second value. On a dark surface it simply reads — 9.6:1 on --bg,
+     8:1 on --raise — so the ink *is* the fill. Both names stay, because the
      two jobs are still different (`--accent` carries `--on-accent` text;
      `--accent-ink` is read as ink), and a future surface may split them again. */
-  --accent: #ffb454; /* 10.6:1 against --on-accent */
+  --accent: #ffb454; /* 10.6:1 against --on-accent, 8:1 on --raise */
   --accent-ink: #ffb454;
   --on-accent: #1a1103;
 
@@ -92,7 +96,20 @@
      surface *toward* the text, so the tint is mixed into one value darker than
      any of them instead — which also makes each of those ratios one number
      rather than one per surface. */
-  --wash: #1b1e23;
+  --wash: #17181a;
+
+  /* Beautiful UI's useful primitives, translated into this product's
+     high-contrast, amber-is-human system: hairline frames, tactile controls and
+     one raised card depth. Structure comes from shadow and radius, never a new
+     decorative colour. */
+  --shadow-hairline: 0 0 0 1px var(--line);
+  --shadow-button: 0 1px 2px rgb(0 0 0 / 30%);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 20%), 0 3px 9px rgb(0 0 0 / 18%);
+  --shadow-raised: 0 8px 28px rgb(0 0 0 / 32%);
+  --shadow-inset: inset 0 1px 2px rgb(0 0 0 / 45%);
+  --radius-card: 12px;
+  --radius-control: 9px;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 
   --sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -116,11 +133,25 @@ body,
 }
 
 body {
-  background: var(--bg);
+  background: var(--page);
   color: var(--fg);
   font: 16px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   /* A terminal that rubber-bands under the thumb is unusable on a phone. */
   overscroll-behavior: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
+
+  button:active:not(:disabled) {
+    transform: none;
+  }
 }
 
 /* dvh, not vh: the mobile URL bar changes the viewport and vh does not follow. */
@@ -128,6 +159,7 @@ body {
   display: flex;
   flex-direction: column;
   height: 100dvh;
+  background: var(--bg);
 }
 
 .centre {
@@ -175,7 +207,44 @@ body {
    keys off which element happens to be the landmark moves the moment that
    changes. */
 .workspace > .rail {
+  z-index: 1;
+  background: var(--bg);
   border-right: 1px solid var(--line);
+  box-shadow: 4px 0 18px rgb(0 0 0 / 12%);
+}
+
+/* The reference sidebar's quiet outer frame: the search and action regions
+   belong to the rail rather than reading as stacked toolbars. Phone keeps the
+   stronger dividers because the list is the whole screen there. */
+.workspace > .rail .bar {
+  padding-inline: 14px;
+  background: var(--bg);
+  border-bottom: 0;
+}
+
+.workspace > .rail .search {
+  padding: 8px 12px 6px;
+  background: var(--bg);
+  border-bottom: 0;
+}
+
+.workspace > .rail .search::before {
+  left: 25px;
+}
+
+.workspace > .rail .search::after {
+  left: 34px;
+}
+
+.workspace > .rail .scroll {
+  padding: 8px 12px 12px;
+  scrollbar-color: var(--line-lit) transparent;
+}
+
+.workspace > .rail .foot {
+  padding-inline: 12px;
+  background: var(--bg);
+  border-top: 0;
 }
 
 /* "Back to sessions" is phone thinking here: the list is the rail beside this,
@@ -253,8 +322,8 @@ body {
   flex-wrap: nowrap;
   align-items: center;
   gap: 8px 10px;
-  padding: 10px 12px;
-  padding-top: max(10px, env(safe-area-inset-top));
+  padding: 4px 12px;
+  padding-top: max(4px, env(safe-area-inset-top));
   background: var(--panel);
   border-bottom: 1px solid var(--line);
 }
@@ -400,14 +469,32 @@ body {
 /* Full width is a phone answer, and stays one in the rail — which is 340px, not
    a 1280px action bar. */
 .foot .primary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   width: 100%;
+  padding-inline: 16px 11px;
+  text-align: left;
+}
+
+.foot .primary::after {
+  content: '+' / '';
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  border-radius: 50%;
+  background: var(--on-accent);
+  color: var(--accent);
+  font-size: 18px;
+  font-weight: 500;
 }
 
 .scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 12px;
+  padding: 10px;
 }
 
 /* ── controls ───────────────────────────────────────────────────────────── */
@@ -415,12 +502,23 @@ body {
 button {
   min-height: var(--tap);
   padding: 0 14px;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--line-lit);
-  background: var(--raise);
+  background: var(--field);
+  box-shadow: var(--shadow-button);
   color: var(--fg);
   font: 15px/1.2 var(--sans);
   cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    transform 140ms var(--ease-out),
+    box-shadow 140ms ease;
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
 button:focus-visible,
@@ -462,6 +560,7 @@ button:disabled {
 .primary {
   background: var(--accent);
   border-color: var(--accent);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 30%);
   color: var(--on-accent);
   font-weight: 650;
 }
@@ -479,11 +578,12 @@ button:disabled {
 .ghost {
   background: transparent;
   border-color: transparent;
+  box-shadow: none;
   color: var(--muted);
 }
 
 .ghost:hover:not(:disabled) {
-  background: var(--raise);
+  background: var(--hover);
   color: var(--fg);
 }
 
@@ -494,9 +594,8 @@ button:disabled {
 }
 
 /* Mixed into `--wash` rather than into whatever it happens to lie on, by the
-   same rule as `.error` and `.chip`: tinted into `--panel` this reads 5.07:1 and
-   into the open row's `--raise` 4.54:1, both under the floor, while one fixed
-   tint is 5.87:1 wherever the row is. */
+   same rule as `.error` and `.chip`: one fixed tint keeps the danger text at
+   6.29:1 wherever the control is drawn. */
 .ghost.danger:hover:not(:disabled) {
   background: color-mix(in srgb, var(--danger) 14%, var(--wash));
   color: var(--danger);
@@ -507,9 +606,10 @@ select {
   min-height: var(--tap);
   width: 100%;
   padding: 0 12px;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--line-lit);
-  background: var(--bg);
+  background: var(--inset);
+  box-shadow: var(--shadow-inset);
   color: var(--fg);
   /* Under 16px, iOS Safari zooms the page on focus and never zooms back. */
   font-size: 16px;
@@ -538,6 +638,7 @@ label {
   border-radius: 16px;
   border: 1px solid var(--line);
   background: var(--panel);
+  box-shadow: var(--shadow-raised);
 }
 
 .card h1,
@@ -558,6 +659,101 @@ label {
 .card .wordmark::before {
   height: 26px;
   width: 4px;
+}
+
+/* The password page uses the reference palette's page/canvas/surface depth:
+   one quiet halo, one raised surface and one field. No extra accent — amber
+   remains the human action on the submit button and wordmark. */
+.login {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 32%, rgb(42 43 46 / 72%) 0, transparent min(360px, 52vw)),
+    var(--page);
+}
+
+.login::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgb(255 255 255 / 2%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 2%) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: linear-gradient(to bottom, transparent, #000 35%, transparent 80%);
+  pointer-events: none;
+}
+
+.login-card {
+  position: relative;
+  width: min(420px, 100%);
+  gap: 18px;
+  padding: 30px;
+  border-color: var(--line-lit);
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 2%) inset,
+    0 18px 54px rgb(0 0 0 / 42%);
+}
+
+.login-head {
+  display: grid;
+  gap: 10px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.login-kicker {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  color: var(--dim);
+  font: 600 11.5px/1 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.login-kicker span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 14%, transparent);
+}
+
+.login-card .wordmark {
+  margin: 2px 0 0;
+}
+
+.login-card .tagline {
+  margin: 0;
+}
+
+.login-field {
+  display: grid;
+  gap: 7px;
+}
+
+.login-field input {
+  background: var(--field);
+}
+
+.login-submit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding-inline: 16px 12px;
+}
+
+.login-submit::after {
+  content: '→' / '';
+  font-size: 19px;
+  line-height: 1;
+}
+
+.login-submit:disabled::after {
+  color: var(--dim);
 }
 
 .tagline {
@@ -585,10 +781,42 @@ label {
 /* Over the list and outside its scroller, so it never scrolls away. Constant
    height, like every other piece of chrome in this file. */
 .search {
+  position: relative;
   flex: none;
-  padding: 8px 12px;
+  padding: 8px 10px;
   background: var(--panel);
   border-bottom: 1px solid var(--line);
+}
+
+.search::before {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  top: 23px;
+  left: 23px;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid var(--dim);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.search::after {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  top: 32px;
+  left: 32px;
+  width: 6px;
+  border-top: 1.5px solid var(--dim);
+  transform: rotate(45deg);
+  transform-origin: left;
+  pointer-events: none;
+}
+
+.search input {
+  padding-left: 34px;
+  border-color: var(--line);
 }
 
 /* When the sessions under it were last worked on. A grouping heading rather
@@ -627,14 +855,17 @@ label {
   align-items: center;
   gap: 4px 6px;
   padding: 4px 6px 4px 0;
-  margin-bottom: 2px;
+  margin-bottom: 3px;
   border-left: 3px solid var(--spine, var(--line-lit));
   border-radius: 3px 10px 10px 3px;
   background: transparent;
+  transition:
+    background-color 150ms ease,
+    box-shadow 150ms ease;
 }
 
 .row:hover {
-  background: var(--panel);
+  background: var(--hover);
 }
 
 .row-claude-code {
@@ -662,9 +893,11 @@ label {
 .row-on:hover {
   background: var(--raise);
   /* The spine twice as wide — a solid bar, not a wash, and inside the row's own
-     padding where no text sits, so it composites with nothing. That plus a
-     surface hover does not use is what keeps "selected" unmistakable. */
-  box-shadow: inset 3px 0 0 0 var(--spine, var(--line-lit));
+     padding where no text sits, so it composites with nothing. The hairline is
+     the selected navigation primitive from the reference sidebar. */
+  box-shadow:
+    inset 3px 0 0 0 var(--spine, var(--line-lit)),
+    var(--shadow-hairline);
 }
 
 /* Right-aligned whether they share the title's line or wrapped below it. */
@@ -829,7 +1062,7 @@ label {
    well clear of the 12% wash it lays down, but a neutral one *is* that wash, so
    text and background rise together and the ratio cannot be won by choosing a
    lighter grey. Unfilled, "Idle" reads on the row's own surface, at the same
-   6.4:1 (panel) / 6:1 (raise, so a hovered or selected row too) as every other machine
+   6.9:1 (panel) / 6.3:1 (raise, so a hovered or selected row too) as every other machine
    detail — and it stays the quietest state on the screen, which is what it is. */
 .chip-agent-idle {
   --tone: var(--dim);
@@ -880,6 +1113,7 @@ label {
   align-items: center;
   border: 0;
   background: none;
+  box-shadow: none;
   padding: 0;
   color: inherit;
   font: inherit;
@@ -961,8 +1195,8 @@ label {
 .conv {
   display: flex;
   flex-direction: column;
-  gap: 22px;
-  padding: 18px 14px 22px;
+  gap: 20px;
+  padding: 20px 16px 24px;
   /* Nothing in here may widen the page: a file path, a stack trace or a line of
      minified JS is routine, and sideways scrolling the whole app to read one is
      the difference between usable and unusable on a phone. */
@@ -997,8 +1231,9 @@ label {
   padding: 12px 16px;
   border: 1px solid var(--line);
   border-left: 3px solid var(--accent-ink);
-  border-radius: 3px 12px 12px 3px;
+  border-radius: 3px var(--radius-card) var(--radius-card) 3px;
   background: var(--panel);
+  box-shadow: var(--shadow-card);
 }
 
 .msg-who {
@@ -1132,7 +1367,7 @@ label {
 
 /* Rule 3: the machine said it. A tint rather than a surface, so a couple of
    words of code in a sentence do not become a row of buttons. Mixed into
-   `--wash` for the reason `.chip` is: 7.9:1 wherever it lands. */
+   `--wash` for the reason `.chip` is: 12.5:1 wherever it lands. */
 .md-inline-code {
   padding: 1px 5px;
   border-radius: 5px;
@@ -1227,8 +1462,22 @@ label {
 }
 
 .thinking {
-  padding-left: 2px;
-  font-style: italic;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 11px;
+  border-radius: 999px;
+  background: var(--panel);
+  box-shadow: var(--shadow-hairline);
+  font-style: normal;
+}
+
+.thinking::before {
+  content: '✦' / '';
+  color: var(--work);
+  font-size: 13px;
 }
 
 .divider {
@@ -1249,9 +1498,10 @@ label {
 
 .note {
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: var(--radius-card);
   border: 1px solid var(--line);
   background: var(--panel);
+  box-shadow: var(--shadow-card);
   color: var(--muted);
   line-height: 1.55;
 }
@@ -1281,7 +1531,7 @@ label {
  * the agent's prose. Tinted into `--wash` for the reason `.error` above gives —
  * mixing a bright tone into the surface it sits on lifts that surface toward the
  * text and no brighter red then wins the ratio back. Measured on the tint this
- * lays down for itself: `--danger` 6.38:1, `--accent-ink` 8.00:1.
+ * lays down for itself: `--danger` 6.82:1, `--accent-ink` 8.54:1.
  *
  * `flex: none` for the reason every `.conv` child needs it — see `.cmd`. */
 .turn-error {
@@ -1350,10 +1600,22 @@ label {
 /* ── tool cards ─────────────────────────────────────────────────────────── */
 
 .tool {
+  width: 100%;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   background: var(--panel);
+  box-shadow: var(--shadow-card);
   overflow: hidden;
+}
+
+/* Collapsed calls become the reference gallery's Tool Chips; opening one
+   restores the full artefact card. The 44px summary remains a real phone tap
+   target even though the frame is compact. */
+.tool:not([open]) {
+  align-self: flex-start;
+  width: auto;
+  max-width: 100%;
+  border-radius: 999px;
 }
 
 .tool-failed {
@@ -1373,10 +1635,11 @@ label {
   min-height: var(--tap);
   padding: 8px 12px;
   cursor: pointer;
+  transition: background-color 140ms ease;
 }
 
 .tool > summary:hover {
-  background: var(--raise);
+  background: var(--hover);
 }
 
 /* `display: flex` above stops the UA generating a `::marker`, so the disclosure
@@ -1442,6 +1705,7 @@ label {
    the list's own stick-to-the-end scrolls the buttons into view regardless. */
 .tool-answerable {
   border-color: var(--accent-ink);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 26%);
 }
 
 /* The one card that wraps instead of scrolling sideways. Everywhere else code
@@ -1679,9 +1943,8 @@ label {
 .chip-elapsed {
   margin-left: 6px;
   font-variant-numeric: tabular-nums;
-  /* No opacity, though a quieter number would read better: 85% of the chip's
-     own tone over the tint that chip lays down measures 5.32:1, under this
-     file's floor. The chip's colour is the only colour it gets. */
+  /* No opacity: the chip's own tone is already its quietest contrast-safe
+     colour. The number inherits it rather than opening another surface case. */
 }
 
 /* Long output scrolls inside its own box, in both directions: code is wrapped at
@@ -1695,7 +1958,8 @@ label {
   overscroll-behavior: contain;
   border-radius: 8px;
   border: 1px solid var(--line);
-  background: var(--bg);
+  background: var(--inset);
+  box-shadow: var(--shadow-inset);
   font: 12.5px/1.5 var(--mono);
   tab-size: 2;
 }
@@ -1758,10 +2022,9 @@ label {
   overflow-y: auto;
   flex-direction: column;
   gap: 6px;
-  padding: 8px 10px;
+  padding: 8px 12px;
   padding-bottom: max(8px, env(safe-area-inset-bottom));
-  background: var(--panel);
-  border-top: 1px solid var(--line);
+  background: linear-gradient(to bottom, transparent, var(--bg) 16px);
 }
 
 /* The controls row: occasional agent settings behind one native disclosure and
@@ -1779,18 +2042,22 @@ label {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-  padding: 3px 5px;
+  padding: 4px 6px;
   border: 1px solid var(--line-lit);
-  border-radius: 15px;
-  background: var(--bg);
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: var(--shadow-card);
   transition:
-    border-color 120ms ease,
-    box-shadow 120ms ease;
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    transform 180ms var(--ease-out);
 }
 
 .composer-shell:focus-within {
   border-color: color-mix(in srgb, var(--accent-ink) 70%, var(--line-lit));
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-ink) 18%, transparent);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--accent-ink) 18%, transparent),
+    0 8px 24px rgb(0 0 0 / 24%);
 }
 
 .composer-shell .composer-text {
@@ -1861,10 +2128,10 @@ label {
      the row that has to stay reachable. The list gives way instead. */
   flex: none;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 4px;
   min-width: 0;
-  padding-top: 2px;
+  padding-top: 3px;
   border-top: 1px solid var(--line);
 }
 
@@ -1928,11 +2195,22 @@ label {
 }
 
 .composer-send {
-  flex: none;
-  min-width: 66px;
+  position: relative;
+  flex: 0 0 var(--tap);
+  width: var(--tap);
+  min-width: var(--tap);
   margin-left: auto;
-  padding-inline: 12px;
-  border-radius: 9px;
+  padding: 0;
+  border-radius: 10px;
+  font-size: 0;
+}
+
+/* The Prompt Bar primitive uses one unmistakable send arrow. The real “Send”
+   text remains in the button for its accessible name; only its visual glyph is
+   replaced. */
+.composer-send::before {
+  content: '↑' / '';
+  font: 650 21px/1 var(--sans);
 }
 
 /* Deliberately the *native* control. A `<select>` is the platform's own menu:
@@ -1956,9 +2234,9 @@ label {
   min-width: 0;
   max-width: none;
   padding: 0 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--line-lit);
-  background: var(--raise);
+  background: var(--field);
   color: var(--muted);
   font-family: var(--sans);
 }
@@ -2006,7 +2284,7 @@ label {
   padding: 8px 11px;
   border-radius: 8px;
   border: 1px solid var(--line-lit);
-  background: var(--bg);
+  background: var(--inset);
   color: var(--fg);
   font-family: var(--sans);
   line-height: 1.45;
@@ -2063,8 +2341,9 @@ label {
   max-height: 26dvh;
   overflow-y: auto;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--wash);
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  box-shadow: var(--shadow-raised);
 }
 
 .composer-cmds > li + li {
@@ -2184,7 +2463,8 @@ label {
   justify-content: center;
   padding: 12px;
   padding-bottom: max(12px, env(safe-area-inset-bottom));
-  background: rgb(0 0 0 / 62%);
+  background: rgb(0 0 0 / 68%);
+  backdrop-filter: blur(8px);
   overflow-y: auto;
 }
 
@@ -2228,6 +2508,16 @@ label {
   width: 20px;
   height: 20px;
   accent-color: var(--accent);
+}
+
+@media (max-width: 440px) {
+  .login {
+    padding: 14px;
+  }
+
+  .login-card {
+    padding: 24px 20px;
+  }
 }
 
 @media (min-width: 600px) {

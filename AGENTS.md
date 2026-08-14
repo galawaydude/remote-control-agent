@@ -532,12 +532,14 @@ Everything CONTRIBUTING lists is runnable locally.
   makes it one.** `/internal/hook` keeps the request open while the user taps
   Approve or Deny; `Conversations.hook` returns the decision and the shim writes
   it. Four rules, each with a verified reason (Claude Code 2.1.220, spiked live):
-  **(1) not everything is held.** `PreToolUse` fires for _every_ call and nothing
-  in the payload — nor in `~/.claude/sessions/<pid>.json`, which reads `busy`
-  throughout — says whether Claude Code was going to prompt, so a blanket hold
-  costs the timeout on every auto-allowed call. `NEVER_HELD` in
-  `providers/claude-code/events.ts` skips the read-only burst tools and
-  `#holdFor` skips a session nobody is **watching** — which is not the same as
+  **(1) not everything is held.** `PreToolUse` fires for _every_ call and neither
+  it nor `~/.claude/sessions/<pid>.json`, which reads `busy` throughout, says
+  whether that call was going to prompt. Its `permission_mode` does say when the
+  provider owns the decision: `auto`, `dontAsk` and `bypassPermissions` are never
+  held, or tether pre-empts the mode and turns every tool into a prompt.
+  `NEVER_HELD` in `providers/claude-code/events.ts` additionally skips the
+  read-only burst tools, and `#holdFor` skips a session nobody is **watching** —
+  which is not the same as
   subscribed, because the session screen keeps both panes mounted, so the `conv`
   socket is open the whole time a user works in the terminal. The client sends
   `{c:'watch'}` (the channel's whole client vocabulary) when the terminal is
