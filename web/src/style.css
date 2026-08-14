@@ -2022,7 +2022,7 @@ label {
   overflow-y: auto;
   flex-direction: column;
   gap: 6px;
-  padding: 8px 12px;
+  padding: 8px 10px;
   padding-bottom: max(8px, env(safe-area-inset-bottom));
   background: linear-gradient(to bottom, transparent, var(--bg) 16px);
 }
@@ -2042,7 +2042,7 @@ label {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-  padding: 4px 6px;
+  padding: 4px 5px;
   border: 1px solid var(--line-lit);
   border-radius: 16px;
   background: var(--panel);
