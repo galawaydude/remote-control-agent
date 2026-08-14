@@ -160,8 +160,7 @@ async function reconstruct(terminals: Terminals, session: string): Promise<strin
   // quiet spell, so first wait for its last generated row, then settle on silence.
   await waitFor(
     async () =>
-      pending === 0 &&
-      screenRows(term).some((row) => row.startsWith(`LINE-${CONTENT_LINES}`)),
+      pending === 0 && screenRows(term).some((row) => row.startsWith(`LINE-${CONTENT_LINES}`)),
     'the attach repaint',
   );
   while (quiet < 6 || pending > 0) {

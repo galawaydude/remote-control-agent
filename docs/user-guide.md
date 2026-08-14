@@ -55,28 +55,28 @@ conversation view cannot draw.
 You reply in the conversation's **composer**: a real text box, so the message is
 composed on the phone and sent as one unit rather than a round trip per keystroke
 with autocorrect fighting a raw byte stream. **Enter inserts a line break** — the
-Send button is what sends — and a multi-line prompt arrives whole. It shows the
-moment you send it and is replaced, not duplicated, by the transcript's own
-record a moment later. **Copy** is available on touch screens as well as on
+**↑** (Send) button is what sends — and a multi-line prompt arrives whole. It
+shows the moment you send it and is replaced, not duplicated, by the transcript's
+own record a moment later. **Copy** is available on touch screens as well as on
 hover, copies the visible text (never an internal attachment path), and changes
 to **Copied** so the tap is not silent.
 
 Paste an image directly into that box, or choose **Image**. A local thumbnail
 appears before anything is sent, can be opened full-size or removed, and up to
-four PNG, JPEG, WebP or GIF images (8 MB each) may accompany one prompt. On Send,
-rcagent stores the bytes privately under its state directory, passes the agent an
-absolute readable path, and renders the image from an authenticated URL in the
+four PNG, JPEG, WebP or GIF images (8 MB each) may accompany one prompt. When
+sent, rcagent stores the bytes privately under its state directory, passes the
+agent an absolute readable path, and renders the image from an authenticated URL in the
 conversation; it remains viewable after reload without writing into the project.
 
-Send is refused, with the reason, while the agent is waiting on a permission
+Sending is refused, with the reason, while the agent is waiting on a permission
 prompt, where a message would answer the dialog rather than the agent; when the
 message is too long for the wire to carry; and once the session has ended or the
 server no longer has it. Mid-turn is fine — the agent queues it.
 
 ### The option controls, and slash commands
 
-Beside Send, **Agent options** expands the controls only while they are needed;
-on a laptop the open controls share one compact horizontal tray. They are
+Beside the **↑** send button, **Agent options** expands the controls only while
+they are needed; on a laptop the open controls share one compact horizontal tray. They are
 deliberately **not the same for both agents**. An axis is offered
 only where changing it was verified to move
 a running session, so Claude Code gets **Permission mode**, **Model** and
