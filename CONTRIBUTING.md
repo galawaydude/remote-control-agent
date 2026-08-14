@@ -177,8 +177,10 @@ for.
   nothing. It asserts the watch rule the overlay decides: a tool call proposed
   while the terminal is summoned is **not** held — the agent's own prompt takes
   the question straight away — and the same session holds the next one once the
-  terminal is put away. Every control that ends a hold is measured rather than
-  merely found: the card's **Approve** and **Deny**, and the waiting banner's
+  terminal is put away. It also runs a call in Claude Code's Auto mode and proves
+  the provider's policy completes it without Remote Control Agent approval controls or a hold.
+  Every control that ends a hold is measured rather than merely found: the card's
+  **Approve** and **Deny**, and the waiting banner's
   **Open the terminal**, are each reachable at the phone's own size and again
   with the keyboard up (360×340).
 - **`composer.spec.ts`** composes a message and asserts it reaches the agent and

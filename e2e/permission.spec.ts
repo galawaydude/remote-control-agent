@@ -55,6 +55,9 @@ const project = join(process.env['TETHER_E2E_DIR'] as string, 'permission');
  */
 const unwatched = join(process.env['TETHER_E2E_DIR'] as string, 'unwatched');
 
+/** A separate pane proving provider-owned policy is not turned into a prompt. */
+const auto = join(process.env['TETHER_E2E_DIR'] as string, 'auto');
+
 const shoot = shots('permission');
 
 /** The server's own hold, from the one place it is configured. */
@@ -66,6 +69,7 @@ const ASK_DENY = 'ask to run the other thing';
 const ASK_WAIT = 'ask and wait it out';
 const ASK_UP = 'ask with the terminal up';
 const ASK_AWAY = 'ask with the terminal away';
+const ASK_AUTO = 'ask in auto mode';
 const ANSWER = 'yes';
 /** What the agent's own prompt prints when tether did not answer the hook. */
 const OWN_PROMPT = 'Do you want to proceed?';
@@ -339,4 +343,34 @@ test('the hold follows the terminal overlay: not held while it is up, held once 
   await expect(held.locator('.tool-state')).toHaveText('✓');
   await expect(held).toContainText('removed ./two');
   await expect(cards).toHaveCount(2);
+});
+
+test('auto permission mode leaves the decision to Claude Code instead of showing approval buttons', async ({
+  page,
+}) => {
+  mkdirSync(auto, { recursive: true });
+
+  await page.goto('/');
+  await page.getByLabel('Password').fill(process.env['TETHER_E2E_PASSWORD'] as string);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('button', { name: 'New session' }).click();
+  await page.getByLabel('Working directory').fill(auto);
+  await page.getByRole('button', { name: 'Start' }).click();
+
+  const conversation = page.locator('.conv');
+  await expect(conversation.getByText(GREETING, { exact: true })).toHaveCount(1);
+
+  await askAt(page, ASK_AUTO, auto);
+  // A mistaken hold lasts HOLD_MS. Claude Code's own auto policy must finish
+  // well before that without Remote Control Agent asking the person instead.
+  await expect(conversation.getByText('removed ./auto', { exact: true })).toHaveCount(1, {
+    timeout: HOLD_MS - 5_000,
+  });
+  const card = conversation.locator('details.tool');
+  await expect(card).toHaveCount(1);
+  await expect(card.locator('.tool-state')).toHaveText('✓');
+  await expect(card.locator('.tool-answer')).toHaveCount(0);
+  await expect(page.locator('.waiting')).toHaveCount(0);
+  await expect(page.locator('header .chip:not([role])')).toHaveText('Idle');
+  await shoot(page, '10-auto-left-to-claude-code');
 });

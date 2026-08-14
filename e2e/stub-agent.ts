@@ -39,13 +39,14 @@ const GREETING = 'stub agent ready';
 
 /**
  * Typed at the pane to act out a permission prompt, and then to answer it in
- * the terminal. Five asks because there are five ways one ends: tether approves
+ * the terminal. Six asks because there are six ways one ends: tether approves
  * it, tether denies it, tether does not answer in time and Claude Code's own
  * prompt takes the question — which is the only path where `ANSWER` is ever
- * typed — and the two the terminal overlay adds, where tether does not hold at
- * all because nobody is watching the conversation, and then does again once it
- * is put away. Each carries its own `tool_use_id`, because a card is keyed by
- * one and a reused id would update the first card rather than make a second.
+ * typed — the two the terminal overlay adds, where tether does not hold at all
+ * because nobody is watching the conversation and then does again once it is
+ * put away, and auto mode where Claude Code owns the decision. Each carries its
+ * own `tool_use_id`, because a card is keyed by one and a reused id would update
+ * the first card rather than make a second.
  */
 const ASKS = {
   'ask to run something': { command: 'rm -rf ./build', callId: 'toolu_01StubPermissionPrompt' },
@@ -58,6 +59,11 @@ const ASKS = {
   'ask with the terminal away': {
     command: 'rm -rf ./two',
     callId: 'toolu_05StubPermissionWatched',
+  },
+  'ask in auto mode': {
+    command: 'rm -rf ./auto',
+    callId: 'toolu_06StubPermissionAuto',
+    permissionMode: 'auto',
   },
 } as const;
 const ANSWER = 'yes';
@@ -248,7 +254,7 @@ function commit(call: { command: string; callId: string }, allowed: boolean): vo
 let asked: { command: string; callId: string } | undefined;
 
 /** The call a typed ask has armed, waiting for {@link TRIGGER}. */
-let armed: { command: string; callId: string } | undefined;
+let armed: { command: string; callId: string; permissionMode?: 'auto' } | undefined;
 
 /**
  * The moment this whole path exists for: the agent has decided to run something
@@ -263,15 +269,21 @@ setInterval(() => {
   armed = undefined;
   rmSync(TRIGGER, { force: true });
 
-  publish('waiting');
+  publish(ask.permissionMode === 'auto' ? 'busy' : 'waiting');
   const decision = fire('PreToolUse', {
-    permission_mode: 'default',
+    permission_mode: ask.permissionMode ?? 'default',
     tool_name: TOOL,
     tool_input: { command: ask.command, description: 'Clear a directory' },
     tool_use_id: ask.callId,
   });
   if (decision !== undefined) {
     commit(ask, decision === 'allow');
+    return;
+  }
+  // Auto mode's own policy allowed this fixture call. If tether held the hook,
+  // execution never reaches here until the hold expires, which the spec catches.
+  if (ask.permissionMode === 'auto') {
+    commit(ask, true);
     return;
   }
   asked = ask;

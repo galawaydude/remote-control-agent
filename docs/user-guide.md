@@ -122,23 +122,25 @@ survives reload.
 
 ## Answering a permission prompt from your phone
 
-When an agent proposes a tool call it needs permission for, the card for that
-call gets **Approve** and **Deny**, and the agent waits on your tap. The card
+When Remote Control Agent can hold an agent's permission prompt, the card for
+that call gets **Approve** and **Deny**, and the agent waits on your tap. The card
 opens itself and shows the whole input — the command, the path, the diff —
 because a button that says "Approve?" over a clipped line is worse than no
 button.
 
-**This works for both providers.** Claude Code needs no setup; Codex needs its
-hook installed once ([below](#codex-and-its-optional-hook)), and then behaves
-identically.
+**This approval flow works for both providers.** Claude Code needs no setup;
+Codex needs its hook installed once ([below](#codex-and-its-optional-hook)), and
+then behaves identically.
 
 Three things worth knowing, because each is a moment where you need to know what
 rcagent will do:
 
 - **It only holds calls worth stopping for, and only while you are watching.**
   Claude Code runs its hook for _every_ tool call, so Remote Control Agent skips the read-only
-  ones (`Read`, `Grep`, `Glob`, …); Codex needs no such list. Neither holds
-  anything at all for a session no browser has open, so an agent reading twenty
+  ones (`Read`, `Grep`, `Glob`, …); Codex needs no such list. In Claude Code's
+  _Decide for me_ and other provider-decided permission modes, Remote Control Agent leaves every
+  call to Claude Code's policy; any question it still asks is answered in the terminal. Neither
+  provider holds anything at all for a session no browser has open, so an agent reading twenty
   files does not slow down because your phone is unlocked.
 - **Nobody answering is not a denial.** After 20 seconds Remote Control Agent stops holding,
   says so on the card, and the agent asks you in the terminal exactly as it would

@@ -531,7 +531,7 @@ Everything CONTRIBUTING lists is runnable locally.
 - **The `PreToolUse` shim's stdout is a security boundary, and the hold is what
   makes it one.** `/internal/hook` keeps the request open while the user taps
   Approve or Deny; `Conversations.hook` returns the decision and the shim writes
-  it. Four rules, each with a verified reason (Claude Code 2.1.220, spiked live):
+  it. Five rules, each with a verified reason (Claude Code 2.1.220, spiked live):
   **(1) not everything is held.** `PreToolUse` fires for _every_ call and neither
   it nor `~/.claude/sessions/<pid>.json`, which reads `busy` throughout, says
   whether that call was going to prompt. Its `permission_mode` does say when the
@@ -1063,9 +1063,10 @@ Everything CONTRIBUTING lists is runnable locally.
   `--wash` for its frame, and the terminal (`.term`, whose colour must stay
   byte-identical to `TerminalView`'s xterm `theme.background`) is one step
   darker again. **The floor is 5.6:1 on every surface a token is actually used
-  on, including the tint a chip lays down for itself** — the measured worst case
-  is 5.69:1 — and the way to check a change is to compute it, not to look at it.
-  Three consecutive rounds regressed contrast or tap size by eye.
+  on, including the tint a chip lays down for itself**; the current measurements
+  live at the top of `web/src/style.css`, and the way to check a change is to
+  compute it, not to look at it. Three consecutive rounds regressed contrast or
+  tap size by eye.
 - **There are two layouts and `app.tsx` picks between them.** Past `WIDE`
   (900px) it renders `.workspace`: the session list as a rail beside the open
   session. A media query cannot do that, because it cannot mount a component,
