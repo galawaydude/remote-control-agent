@@ -963,7 +963,8 @@ function Composer({
             class="composer-send primary"
             disabled={(message === '' && images.length === 0) || blocked !== null || sending}
           >
-            {sending ? 'Sending…' : 'Send'}
+            <span aria-hidden="true">↑</span>
+            <span class="sr-only">{sending ? 'Sending…' : 'Send'}</span>
           </button>
         </div>
       </div>

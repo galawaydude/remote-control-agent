@@ -2202,14 +2202,6 @@ label {
   margin-left: auto;
   padding: 0;
   border-radius: 10px;
-  font-size: 0;
-}
-
-/* The Prompt Bar primitive uses one unmistakable send arrow. The real “Send”
-   text remains in the button for its accessible name; only its visual glyph is
-   replaced. */
-.composer-send::before {
-  content: '↑' / '';
   font: 650 21px/1 var(--sans);
 }
 
