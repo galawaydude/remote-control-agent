@@ -1,13 +1,6 @@
-/**
- * The handful of things every spec does to the app, spelled once.
- *
- * The summon/dismiss recipe in particular: the header toggle and its
- * `aria-expanded` handshake were written out in four specs, so changing the
- * control meant finding all four. It lives here beside `serve.ts` for the
- * same reason that does — it is harness, not a claim.
- */
+/** Browser geometry and evidence helpers shared by the terminal UI specs. */
 
-import { expect, type Locator, type Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { join } from 'node:path';
 
 /**
@@ -22,52 +15,9 @@ export const KEYBOARD_UP = { width: 360, height: 340 } as const;
 /** Where a reviewer's copies go; set by the runner, ignored when it is not. */
 const evidence = process.env['TETHER_E2E_SHOTS'];
 
-/** The one control that switches between conversation and terminal. */
-export const hatch = (page: Page): Locator => page.locator('.bar-term');
-
-export async function summon(page: Page): Promise<void> {
-  await expect(hatch(page)).toHaveText('Terminal');
-  await hatch(page).click();
-  await expect(hatch(page)).toHaveAttribute('aria-expanded', 'true');
-  await expect(hatch(page)).toHaveText('Conversation');
-}
-
-export async function dismiss(page: Page): Promise<void> {
-  await expect(hatch(page)).toHaveText('Conversation');
-  await hatch(page).click();
-  await expect(hatch(page)).toHaveAttribute('aria-expanded', 'false');
-  await expect(hatch(page)).toHaveText('Terminal');
-}
-
-/**
- * **Reachable**, spelled once, because four panels in this product have grown
- * past a small phone and every one of them was caught by a reviewer instead of
- * by a test: the New session sheet pushed its Agent picker off the top of a
- * fixed overlay, the waiting banner's overlay fix covered the content under it,
- * and the composer's permission warning pushed its own confirm and Send below
- * the fold with the keyboard up.
- *
- * All three are the same failure and none of them is *presence* — the control
- * was in the DOM every time. So this asserts geometry, and it asserts what a
- * thumb can actually do:
- *
- *  - it has a box at all;
- *  - after being scrolled to **through its own container** — the panels here
- *    scroll inside themselves, and being below one's fold is not the failure —
- *    that box is wholly inside the viewport;
- *  - it is a real 44px tap target;
- *  - nothing is lying on top of it, hit-tested at its centre rather than
- *    inferred, which is the only form that catches an overlay;
- *  - and the *document* does not scroll, in **either** axis, because a header and
- *    a conversation scrolling away is not a fix for a panel that outgrew the
- *    screen — and a panel that pushed the page sideways instead is the same
- *    failure turned ninety degrees.
- *
- * Every failure names the control and the viewport it failed at, so the next
- * person reads the message instead of bisecting a layout. Playwright's own
- * `toBeInViewport` would scroll the page to make itself true and reports a
- * ratio, not a reason.
- */
+/** A control is reachable when it is a 44px target wholly inside the viewport,
+ * uncovered after its own container scrolls, while the document itself stays
+ * fixed in both axes. */
 export async function reachable(page: Page, control: Locator, name: string): Promise<void> {
   const view = page.viewportSize() ?? { width: 0, height: 0 };
   const at = `${name} at ${view.width}×${view.height}`;

@@ -15,13 +15,13 @@ services, `TETHER_*` settings and the `tether` command continue to work.
 
 ## Features
 
-- Conversation-first UI with the real terminal one tap away
-- Persistent sessions, transcript history, resume and removal
-- Claude Code and Codex conversations, status and folder trust
-- Approve or deny supported permission prompts from your phone
-- Fast PTY input, image attachments and mobile-friendly controls
+- One universal terminal interface for every supported coding agent
+- Persistent tmux sessions with reload, resume and removal
+- Fast binary PTY input and mobile-friendly terminal controls
+- Scrollback buttons for earlier output and an instant return to latest
+- Claude Code and Codex launching, status and folder trust
 - Optional public HTTPS through Tailscale Funnel
-- Desktop session rail and bounded history for long-running work
+- A collapsible desktop session rail
 
 ## Security
 

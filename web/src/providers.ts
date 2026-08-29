@@ -1,7 +1,5 @@
 /**
- * What the browser says about a provider. One list, three uses: the picker in
- * the New session sheet, the tag on a list row, and the name over an assistant
- * message.
+ * Provider ids and folder-trust wording used by the session list and New session sheet.
  *
  * The ids are the server's own (`DEFAULT_PROVIDER` in `machine/registry.ts`,
  * `CODEX` in `providers/codex/spawn.ts`) and the create route validates against
@@ -28,65 +26,10 @@ export const PROVIDERS = [
 
 /**
  * A provider's name, or the raw id for one this build has not heard of. Falling
- * back to the id is the same rule the conversation view follows for an unknown
- * event kind: show what is known, never throw and never blank the screen.
+ * back to the id shows what is known without guessing or blanking the row.
  */
 export function providerLabel(provider: string): string {
   return PROVIDERS.find((p) => p.id === provider)?.label ?? provider;
-}
-
-/** The name over a message. The assistant is whichever agent is actually running. */
-export function whoLabel(who: 'user' | 'assistant', provider: string): string {
-  return who === 'user' ? 'You' : providerLabel(provider);
-}
-
-/**
- * The accessible name of a message's Copy button — the button has no visible
- * text a screen reader could use on its own, and "Copy" repeated down a
- * conversation names nothing.
- *
- * It deliberately does **not** contain the word "message". The composer's own
- * label is exactly that word, and Playwright's `getByLabel` matches on a
- * substring, so a Copy button named "Copy Claude Code message" makes
- * `getByLabel('Message')` ambiguous and takes two specs down with it. Naming
- * what is copied — your text, the agent's reply — is clearer anyway.
- */
-export function copyLabel(who: 'user' | 'assistant', provider: string): string {
-  return who === 'user' ? 'Copy your text' : `Copy the reply from ${providerLabel(provider)}`;
-}
-
-/**
- * The accessible names of the three controls that summon the terminal: a failed
- * turn's row, the composer's command note, and the waiting banner.
- *
- * Here for the same reason `copyLabel` is — it is the wording of a control's
- * accessible name — and all three rather than one, because the rule is about
- * them as a set. Any two can be on screen together, and `getByRole({ name })`
- * matches on a case-insensitive substring, so one name containing another is an
- * ambiguity for a screen reader and for the specs that locate the others. The
- * guard in `providers.test.ts` is only a guard if it compares the strings the
- * buttons actually render, so the buttons take their names from here.
- */
-export const AUTH_TERMINAL_LABEL = 'Go to the terminal';
-
-export const COMMAND_TERMINAL_LABEL = 'Show the terminal';
-
-export const WAITING_TERMINAL_LABEL = 'Open the terminal';
-
-/**
- * What a screen reader hears before a failed turn's row.
- *
- * Sighted users get the attribution from the house rule that a box means an
- * artefact and prose means the agent; without a heading, the CLI's own words are
- * read out in the model's voice, straight after an assistant message. It names
- * the provider through `providerLabel` rather than an agent, because the same
- * row renders for both.
- *
- * Like `copyLabel` it must not contain the word "message": the composer's own
- * label is exactly that word and `getByLabel` matches on a substring.
- */
-export function turnErrorLabel(provider: string): string {
-  return `${providerLabel(provider)} reported a failed turn`;
 }
 
 /**
@@ -158,16 +101,14 @@ export function trustAsk(
 /**
  * Why a dead session cannot be brought back, when it cannot.
  *
- * Codex creates no session identity until the first user message, so a session
- * closed before anyone typed into it has no conversation to resume — the server
- * refuses that resume outright rather than starting a fresh session wearing a
- * resumed one's name. The row says so instead of leaving a user to find out from
- * a 409, and says nothing at all when there is nothing to say.
+ * Codex creates no session identity until the first input, so a session closed
+ * before anyone typed has nothing exact to resume. The server refuses rather
+ * than starting a fresh process under a resumed row.
  */
 export function unresumableNote(session: {
   deadAt: number | null;
   providerSessionId: string | null;
 }): string | null {
   if (session.deadAt === null || session.providerSessionId !== null) return null;
-  return 'no conversation to resume — it never got a first message';
+  return 'no saved session to resume — it never received input';
 }

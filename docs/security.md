@@ -113,28 +113,12 @@ Keep Remote Control Agent on loopback and add authentication at the proxy when p
 
 ## Known risks
 
-**The conversation view is built on file formats that are not public APIs.**
-Claude Code writes its transcript to `~/.claude/projects/` and Codex writes its
-rollout to `~/.codex/sessions/`. Both ship frequently and owe Remote Control Agent nothing. A
-release can change the record shapes, and when it does the conversation view
-loses detail — a tool card, a message, at worst the whole view. Remote Control Agent parses
-them tolerantly for that reason: an unrecognised record is logged to stderr and
-ignored, never thrown.
-
-**The composer's option controls are the same kind of bet.** Each is a slash
-command typed at the agent, or — for Claude Code's permission mode — a keystroke
-plus a read of the words in the pane's own status line, so an agent that renames
-a command or redraws that line can leave a control doing nothing. It can never
-leave one lying: permission mode is reported only as the mode that was read back,
-and every other control claims nothing at all, so the agent's own reply above the
-composer is what says the change landed. Every axis was established against
-Claude Code 2.1.220 and codex-cli 0.145.0; setting any of them by hand in the
-terminal always works. So is the slash-command list beside them, and what it says
-about where a command's answer turns up is a **prediction rather than a
-promise**: an agent is free to stop and ask something the table could not foresee
-— `/model opus` opens a _Switch model?_ confirmation on a session with a cached
-conversation — which is why no note ever claims nothing else will happen, and why
-the waiting banner is the correction.
+**Provider metadata is built on file formats that are not public APIs.** Claude
+Code and Codex ship frequently and can change their session, status and transcript
+records. Remote Control Agent uses those files only to label state and resume the exact saved
+provider session; the working interface is the tmux terminal and does not parse
+provider output. Unknown records are warned about and ignored rather than taking
+the terminal down.
 
 **Folder trust is the same bet, and the one place Remote Control Agent takes it while
 _writing_.** Where each agent records a trusted directory is its own business, and
@@ -144,10 +128,9 @@ consequences are bounded on purpose: a file Remote Control Agent cannot make sen
 checkbox and no write, a write it will not make refuses the session outright
 rather than starting one on a promise it did not keep, and an existing file is
 copied into Remote Control Agent's state directory before it is touched. What a stale reader
-costs you is the question moving back into the terminal, where it has always been
+costs you is the trust question appearing in the terminal, where it remains
 answerable.
 
-**The terminal view depends on none of it.** It is the real TUI over tmux, it is
-always correct, and it is a complete fallback. If the conversation ever looks
-wrong or empty after a provider upgrade, that is the failure to expect, summoning
-the terminal is the answer, and the session itself was never at risk.
+**The terminal is the interface.** It is the provider's real TUI over tmux and
+requires no provider-output mapper. Provider permission rules and dialogs remain
+authoritative; Remote Control Agent does not render a second approval surface.
