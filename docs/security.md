@@ -115,10 +115,11 @@ Keep Remote Control Agent on loopback and add authentication at the proxy when p
 
 **Provider metadata is built on file formats that are not public APIs.** Claude
 Code and Codex ship frequently and can change their session, status and transcript
-records. Remote Control Agent uses those files only to label state and resume the exact saved
-provider session; the working interface is the tmux terminal and does not parse
-provider output. Unknown records are warned about and ignored rather than taking
-the terminal down.
+records. The first-party working interface is the tmux terminal and does not parse
+provider output; it reads only enough provider metadata to label state and resume
+the exact saved session. Retained compatibility conversation routes can still read
+and tail transcripts for older clients. Unknown records are warned about and
+ignored rather than taking the terminal down.
 
 **Folder trust is the same bet, and the one place Remote Control Agent takes it while
 _writing_.** Where each agent records a trusted directory is its own business, and

@@ -195,14 +195,9 @@ type Live = {
   tail: SeqEvent[];
   subscribers: Set<Send>;
   /**
-   * The subset of `subscribers` with the conversation pane actually in front.
-   *
-   * Not the same set, and the difference is not a detail: the session screen
-   * keeps both panes mounted (`web/src/app.tsx`), so the `conv` socket is
-   * subscribed for the whole time a user is working in the terminal. Holding on
-   * that would stall every `Edit`, `Write` and `Bash` behind a card nobody is
-   * looking at, on the one surface where the user is already able to answer.
-   * The client says which view is in front and says so again when it changes.
+   * Compatibility subscribers that explicitly say their conversation pane is
+   * in front. The first-party browser opens no `conv` socket, so it never enters
+   * this set and never makes a permission hold eligible.
    */
   watching: Set<Send>;
   /** Every `callId` the transcript has produced, so a pending can be retired. */
@@ -426,6 +421,29 @@ export class Conversations {
     return record.state;
   }
 
+  /** One bounded identity lookup for a provisional row; never opens a tailer. */
+  async discoverIdentity(session: Session): Promise<void> {
+    if (session.providerSessionId === null) await this.#find(session).catch(() => undefined);
+  }
+
+  /**
+   * Keep an open terminal's provider identity current without subscribing to or
+   * tailing its transcript. `false` means tmux says the pane ended; `undefined`
+   * means tmux itself could not be read and must not be mistaken for an ending.
+   */
+  async syncPaneMetadata(session: Session): Promise<boolean | undefined> {
+    const panes = await listPanes(this.#options.socket ?? DEFAULT_SOCKET).catch(() => undefined);
+    if (panes === undefined) return undefined;
+    const pane = panes.find((candidate) => candidate.session === session.tmuxName);
+    if (pane === undefined || pane.dead) return false;
+    if (session.provider === CODEX) {
+      if (session.providerSessionId === null) {
+        await this.#find(session, undefined, pane.pid).catch(() => undefined);
+      }
+    } else await this.paneState(session, pane.pid);
+    return true;
+  }
+
   /**
    * Ask the pane which session it is running, before looking for a transcript.
    *
@@ -450,7 +468,7 @@ export class Conversations {
     this.#bind(session, await readSessionId(pid, this.#home()));
   }
 
-  async #find(session: Session, memo?: StartMemo) {
+  async #find(session: Session, memo?: StartMemo, panePid?: number) {
     await this.#syncFromPane(session);
     const claimed = claimedProviderSessionIds(this.#db, session.id);
     const found =
@@ -461,7 +479,9 @@ export class Conversations {
             providerSessionId: session.providerSessionId,
             codexHome: this.#codexHome(),
             stateDir: this.#stateDir(),
-            ...(session.providerSessionId == null ? { panePid: await this.#panePid(session) } : {}),
+            ...(session.providerSessionId == null
+              ? { panePid: panePid ?? (await this.#panePid(session)) }
+              : {}),
             claimed,
           })
         : await findTranscript({
@@ -608,9 +628,8 @@ export class Conversations {
     }
 
     live.subscribers.add(send);
-    // Watching until told otherwise: the conversation is what opening a session
-    // lands on, so the common case costs no frame, and a client too old to say
-    // is treated as the observer it was before this.
+    // Preserve the compatibility API's original default for older clients. The
+    // first-party terminal-only browser never subscribes here.
     live.watching.add(send);
     let released = false;
     return () => {
@@ -625,13 +644,9 @@ export class Conversations {
   }
 
   /**
-   * The client saying which view is in front. `false` is the terminal summoned
-   * over the conversation, where the provider's own prompt is already the
-   * answering surface.
-   *
-   * Summoning it mid-hold releases rather than denies, exactly as the last
-   * viewer leaving does: the question goes back to the provider's own rules, and
-   * the terminal the user just summoned is where it will be asked.
+   * A compatibility client saying whether its conversation view is in front.
+   * Moving to its terminal mid-hold releases rather than denies, so the question
+   * returns to the provider's own rules.
    */
   watch(sessionId: string, send: Send, watching: boolean): void {
     const live = this.#live.get(sessionId);
@@ -832,14 +847,10 @@ export class Conversations {
    * Two conditions, and each removes a different way holding would be a cost
    * with no benefit:
    *
-   * - **Somebody has the conversation pane in front.** Not merely subscribed:
-   *   the session screen keeps both panes mounted, so the socket stays open
-   *   while the user works in the terminal — and holding then would stall an
-   *   agent in front of the very surface that answers its prompts. A background
-   *   session has no subscriber and never pauses; a session being driven from
-   *   the terminal has one that says it is not watching, and does not pause
-   *   either. Which pane is in front is all the client reports and all this
-   *   knows — not whether the screen is even on.
+   * - **A compatibility client has its conversation pane in front.** The
+   *   first-party browser never subscribes, so its terminal cannot hold an agent
+   *   ahead of the provider's own prompt. Which pane is in front is all a legacy
+   *   client reports — not whether its screen is even on.
    * - **The tool is holdable.** Claude Code's `PreToolUse` fires for every call
    *   and says nothing about whether it was going to prompt (verified: see
    *   `NEVER_HELD`), so the read-only burst tools are skipped by name. Without
@@ -1015,8 +1026,8 @@ export class Conversations {
    * `findTranscript`'s timestamp/mtime fallback and begins delivering from it, so
    * by the time a poll tick or a hook binds the id for the *first* time a client
    * can already hold event 1. Treating that as "nobody can be holding anything"
-   * re-numbered from 0 and re-sent it with no refetch — a duplicate the browser's
-   * own `addEvents` happens to drop, and the next consumer will not. It is
+   * re-numbered from 0 and re-sent it with no refetch — a duplicate an older
+   * browser happened to drop, and the next consumer may not. It is
    * load-dependent, which is why the guard is a test with the window forced open
    * (`syncDelay`) rather than a comment.
    *

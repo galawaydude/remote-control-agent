@@ -106,9 +106,11 @@ Everything CONTRIBUTING lists is runnable locally.
   history comes from tmux (100k retained, 5k replayed). A live tmux attach can
   coalesce a burst into one repaint, leaving xterm with no local history although
   tmux has it; the first **Pg↑** therefore toggles output off/on to invoke the
-  existing `Terminals.refresh`, waits for capture plus repaint, then calls
-  `term.scrollPages(-1)`. Later pages are local; **End** calls
-  `term.scrollToBottom()`. xterm 6 uses an internal scroll model, not a native
+  existing `Terminals.refresh`. The term socket brackets the captured bytes with
+  `history` control frames, and the browser waits for xterm's write callback before
+  scrolling; network silence and the later asynchronous tmux repaint are not
+  completion signals. Further taps queue during capture and page locally after it;
+  **End** wins even mid-capture. xterm 6 uses an internal scroll model, not a native
   scrolling element, so DOM `scrollTop` is not a valid implementation or test.
 - **tmux 3.7 is a hard floor.** `tether.conf` sets `window-size manual`, and tmux
   before 3.7 sizes a not-yet-created window through a NULL pointer, so every detached
@@ -317,16 +319,18 @@ Everything CONTRIBUTING lists is runnable locally.
   session** — `/resume` and `--continue` move Claude Code to a different session id and
   a different transcript, verified live on 2.1.220 — so it is what the pane is running
   _now_, re-read from `~/.claude/sessions/<pane_pid>.json` rather than settled once.
-  `Conversations` is the only writer: `#bind` records it and, for a session anyone is
-  watching, restarts the tailer and sends `{c:'refetch'}` so the view follows. It has
-  two callers, because the row has to follow the pane whether or not anybody is
-  watching: the status poller, and the **session list**, which reads its badge
-  through `Conversations.paneState` and holds no reader of its own. A badge may
-  never again ask about the id the row _used_ to carry — that is what emptied it,
-  `waiting` included, until somebody opened the conversation. Widening it costs no
-  guard: the pid is a tether pane's, so a hand-run agent is in no pane and is never
-  reached, and `status.ts`'s liveness and `procStart` checks are what say the file
-  under that pid is really that pane's.
+  `Conversations` is the only writer: `#bind` records it and, for a compatibility
+  conversation subscriber, restarts the tailer and sends `{c:'refetch'}` so the
+  view follows. The **session list** reads Claude's badge through `paneState`, and
+  an open term socket calls `syncPaneMetadata` so a phone with its list unmounted
+  still records the current provider id and notices a dead pane. That method does
+  not open or tail a transcript: Claude reads its pid-keyed status record; a
+  provisional Codex row performs only the bounded identity lookup. Opening a dead
+  provisional row does that bounded fallback once as well, covering a server that
+  was down when the pane exited; neither path starts a tailer. The pid is a
+  tether pane's, so a hand-run agent is in no pane and is never reached, and
+  `status.ts`'s liveness and `procStart` checks say the Claude file really belongs
+  to that pane.
   Rows are marked dead, never physically deleted: a dead row
   is what `resumeSession` (`machine/sessions.ts`) restarts through the provider's own
   resume, and `revive` is the only thing that clears `dead_at`. **Remove** on a dead
@@ -408,15 +412,14 @@ Everything CONTRIBUTING lists is runnable locally.
   rather than rewriting a `hooks.json` whose shape it does not recognise.
   `--dangerously-bypass-hook-trust` must appear nowhere — not in code, not in
   docs, not as a fallback; that is a captain's decision, not a preference. The
-  hook buys the live `waiting` badge in the session list; the prompt itself is
-  always answered in the terminal. `busy` and `idle` come from the rollout, so
-  **declining is a supported configuration** and nothing may
-  warn, retry or nag about it. Explaining the prompt before it appears binds the
-  UI as much as the CLI: `cli.ts`'s `codexHookExplanation` and `app.tsx`'s
-  `CodexHookNote` are the only two places that say it, and the second says it
-  only while Codex is the selected provider in the New session sheet. Neither may
-  grow into a banner on the session list or a warning beside a Codex session
-  running happily without the hook. Installing stays a CLI command on purpose —
+  hook's `SessionStart` record gives the terminal-only server an exact Codex
+  pane-to-session identity for later Resume. The first-party browser never answers
+  its `PermissionRequest`; the provider prompt stays in the terminal. **Declining
+  is a supported configuration**: identity falls back to bounded rollout metadata,
+  and nothing warns, retries or nags about the hook. `cli.ts`'s
+  `codexHookExplanation` is the one place that explains the trust prompt, only
+  because the user typed the install command. It must not grow into browser copy,
+  a session-list warning or a banner. Installing stays a CLI command on purpose —
   it writes to a file tether does not own.
   **The hooks.json `timeout` tether writes is a constant, and must stay one.**
   Claude Code's settings entry is _reconciled_ to the current hold; doing that here
@@ -624,10 +627,11 @@ Everything CONTRIBUTING lists is runnable locally.
   `{"password": 123}` arrives as `"123"`. `buildServer` turns both off. Do not remove that
   `ajv.customOptions` block, and do not assume stock Fastify behaviour when reading the tests.
 - **`e2e/` is the terminal product path, not a transcript simulation.** The
-  phone spec opens one production tmux/PTy/WebSocket terminal, creates 120 lines,
-  proves **Pg↑** changes the rendered xterm screen and **End** returns to line 120,
+  phone spec opens one production tmux/PTy/WebSocket terminal, creates 240 lines,
+  proves queued **Pg↑** taps move deeper and **End** wins even during capture,
   then reloads to prove tmux reconstruction. It also covers terminal-first resume,
-  restore retry and New session reachability at 360×340. The desktop spec measures
+  a provider exiting under the open terminal, restore retry, and both terminal
+  controls and New session reachability at 360×340. The desktop spec measures
   the rail beside that same terminal. Both use `e2e/stub-agent.ts` under a scratch
   `HOME`, state directory and tmux socket; CI never runs a paid agent. There are no
   retries. Build `web/dist` before running Playwright, because `tether serve` reads

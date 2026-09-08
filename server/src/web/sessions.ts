@@ -201,8 +201,14 @@ export function registerSessionRoutes(app: FastifyInstance, options: SessionRout
     { schema: { params: SESSION_PARAMS } },
     async (request, reply) => {
       await reconcileWithTmux(db, socket);
-      const session = getSession(db, request.params.id);
+      let session = getSession(db, request.params.id);
       if (session === undefined) return reply.code(404).send({ error: 'no_such_session' });
+      // A server may have been down when the provider exited. Do one bounded
+      // identity lookup when that provisional row is opened; never tail it.
+      if (session.deadAt !== null && session.providerSessionId === null) {
+        await conversations.discoverIdentity(session);
+        session = getSession(db, session.id)!;
+      }
       return reply.send({ session });
     },
   );

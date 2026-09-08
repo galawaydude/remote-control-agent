@@ -53,6 +53,8 @@ const RECONNECT_MIN_MS = 1000;
 const RECONNECT_MAX_MS = 30_000;
 /** Long enough to coalesce an orientation change, short enough not to be felt. */
 const RESIZE_DEBOUNCE_MS = 120;
+/** A failed capture reconnects; it never masquerades as usable history. */
+const HISTORY_REFRESH_TIMEOUT_MS = 10_000;
 
 /**
  * The keys a phone keyboard does not have and the agent's TUI cannot be driven
@@ -100,12 +102,29 @@ export function TerminalView({
     let historyTimer: ReturnType<typeof setTimeout> | undefined;
     let refreshingHistory = false;
     let historyFresh = false;
-    let resetForHistory = false;
+    let pendingHistoryPages = 0;
+    let endAfterHistory = false;
+    let writes = Promise.resolve();
     let closed = false;
     let backoff = RECONNECT_MIN_MS;
 
     const post = (frame: ClientFrame) => {
       if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(frame));
+    };
+
+    // xterm parses writes asynchronously. Serialising resets and writes makes a
+    // history `ready` frame a real barrier rather than a network-timing guess.
+    const resetTerminal = () => {
+      writes = writes.then(() => term?.reset());
+    };
+    const writeTerminal = (bytes: Uint8Array) => {
+      writes = writes.then(
+        () =>
+          new Promise<void>((resolve) => {
+            if (term === undefined) resolve();
+            else term.write(bytes, resolve);
+          }),
+      );
     };
 
     send.current = (frame) => {
@@ -137,7 +156,12 @@ export function TerminalView({
     };
 
     const connect = () => {
-      term?.reset();
+      clearTimeout(historyTimer);
+      refreshingHistory = false;
+      historyFresh = false;
+      pendingHistoryPages = 0;
+      endAfterHistory = false;
+      resetTerminal();
       const ws = new WebSocket(termSocketUrl(session.tmuxName, clientId, true));
       ws.binaryType = 'arraybuffer';
       socket = ws;
@@ -150,28 +174,43 @@ export function TerminalView({
       };
       ws.onmessage = (event: MessageEvent) => {
         // Binary end to end: xterm owns decoding across chunk boundaries.
-        if (!(event.data instanceof ArrayBuffer) || term === undefined) return;
-        if (resetForHistory) {
-          term.reset();
-          resetForHistory = false;
+        if (event.data instanceof ArrayBuffer) {
+          const atBottom = term?.buffer.active.viewportY === term?.buffer.active.baseY;
+          writeTerminal(new Uint8Array(event.data));
+          if (!refreshingHistory && atBottom) historyFresh = false;
+          return;
         }
-        term.write(new Uint8Array(event.data));
-        if (!refreshingHistory && term.buffer.active.viewportY === term.buffer.active.baseY) {
-          historyFresh = false;
-        }
-        if (refreshingHistory) {
-          clearTimeout(historyTimer);
-          // The refresh is a captured history frame followed by tmux's live
-          // repaint. Scroll only after both have gone quiet.
-          historyTimer = setTimeout(() => {
-            refreshingHistory = false;
-            historyFresh = true;
-            term?.scrollPages(-1);
-          }, RESIZE_DEBOUNCE_MS);
+        if (typeof event.data !== 'string') return;
+        try {
+          const frame = JSON.parse(event.data) as { c?: unknown; phase?: unknown };
+          if (frame.c !== 'history' || !refreshingHistory) return;
+          if (frame.phase === 'start') resetTerminal();
+          else if (frame.phase === 'ready') {
+            // WebSocket ordering guarantees every captured byte is already in
+            // this chain. The callback guarantees xterm parsed it before moving.
+            const ready = writes;
+            void ready.then(() => {
+              if (!refreshingHistory || closed) return;
+              clearTimeout(historyTimer);
+              refreshingHistory = false;
+              historyFresh = true;
+              const pages = pendingHistoryPages;
+              pendingHistoryPages = 0;
+              if (endAfterHistory) term?.scrollToBottom();
+              else if (pages > 0) term?.scrollPages(-pages);
+              endAfterHistory = false;
+            });
+          }
+        } catch {
+          /* Unknown control frames do not take down the terminal. */
         }
       };
       ws.onclose = (event: CloseEvent) => {
         socket = null;
+        clearTimeout(historyTimer);
+        refreshingHistory = false;
+        pendingHistoryPages = 0;
+        endAfterHistory = false;
         if (closed) return;
         const settled = CLOSE_STATUS[event.code];
         if (settled !== undefined) {
@@ -206,20 +245,27 @@ export function TerminalView({
         term.open(host.current as HTMLDivElement);
         focus.current = () => term?.focus();
         historyUp.current = () => {
-          if (term === undefined || refreshingHistory) return;
+          if (term === undefined || socket?.readyState !== WebSocket.OPEN) return;
           // A tmux attach repaints its current viewport and may coalesce all the
           // output that scrolled past, so xterm can have one line of history
-          // while tmux has thousands. Ask the existing output toggle for a
-          // capture before the first page-up; later pages are local and instant.
-          if (historyFresh) term.scrollPages(-1);
-          else {
-            refreshingHistory = true;
-            resetForHistory = true;
-            post({ c: 'output', enabled: false });
-            post({ c: 'output', enabled: true });
+          // while tmux has thousands. Refresh once; later pages are local.
+          if (historyFresh && !refreshingHistory) {
+            term.scrollPages(-1);
+            return;
           }
+          pendingHistoryPages += 1;
+          endAfterHistory = false;
+          if (refreshingHistory) return;
+          refreshingHistory = true;
+          historyTimer = setTimeout(() => socket?.close(), HISTORY_REFRESH_TIMEOUT_MS);
+          post({ c: 'output', enabled: false });
+          post({ c: 'output', enabled: true });
         };
-        historyEnd.current = () => term?.scrollToBottom();
+        historyEnd.current = () => {
+          pendingHistoryPages = 0;
+          endAfterHistory = refreshingHistory;
+          term?.scrollToBottom();
+        };
         term.onData((data) => {
           for (const frame of encodeInput(data)) send.current(frame);
         });

@@ -1084,6 +1084,7 @@ label {
   z-index: 0;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
   padding: 6px;
   background: #16181d;
 }
@@ -1189,13 +1190,9 @@ label {
     align-items: center;
   }
 
-  /* Thumb-filling widths are a phone answer; on a desktop they fit in one row. */
+  /* One row where it fits, including the narrow terminal beside a 340px rail. */
   .keys {
-    display: flex;
+    grid-template-columns: repeat(9, minmax(44px, 64px));
     justify-content: center;
-  }
-  .keys button {
-    flex: 0 0 auto;
-    min-width: 64px;
   }
 }

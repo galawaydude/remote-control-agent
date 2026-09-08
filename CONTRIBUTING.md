@@ -121,23 +121,24 @@ WS     /api/sessions/:name/term                terminal bytes, both ways
 ```
 
 The browser does not consume the conversation, image or permission routes; its
-session interface is only the terminal WebSocket. Those endpoints and transcript
-mappers remain as compatibility API and as provider metadata used to identify and
-resume saved sessions. New first-party UI must not subscribe to `conv`: doing so
+session interface is only the terminal WebSocket. Those endpoints and transcript mappers remain as a compatibility API. Separate
+bounded provider metadata reads identify and resume saved sessions without opening
+a transcript tail. New first-party UI must not subscribe to `conv`: doing so
 would reintroduce provider-format coupling and make hooks eligible to hold a tool
 call ahead of the provider's own terminal prompt.
 
 ### The end-to-end specs
 
-`e2e/` has two Playwright specs and eight scenarios. Seven run at a phone
+`e2e/` has two Playwright specs and nine scenarios. Eight run at a phone
 viewport; the desktop rail gets the laptop project.
 
 - **`session.spec.ts`** signs in, starts a real tmux-backed stub session and
   proves the session opens directly as a terminal with no transcript pane or
   view toggle. It produces more than a screen of output, drives **Pg↑** and
   **End**, reloads and proves tmux reconstructs the terminal. It also covers a
-  transient restore failure, terminal-first resume, and the New session sheet at
-  four small viewports including 360×340 with the keyboard up.
+  transient restore failure, terminal-first resume, an agent ending while its
+  phone terminal is open, terminal controls at keyboard-up height, and the New
+  session sheet at four small viewports including 360×340.
 - **`desktop.spec.ts`** measures the mounted session rail beside the terminal,
   collapses and reloads it, restores it with the selected row intact, and checks
   the mobile shape after crossing back below 900px.

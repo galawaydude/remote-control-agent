@@ -17,7 +17,7 @@ services, `TETHER_*` settings and the `tether` command continue to work.
 
 - One universal terminal interface for every supported coding agent
 - Persistent tmux sessions with reload, resume and removal
-- Fast binary PTY input and mobile-friendly terminal controls
+- Binary PTY output, fast terminal input and mobile-friendly controls
 - Scrollback buttons for earlier output and an instant return to latest
 - Claude Code and Codex launching, status and folder trust
 - Optional public HTTPS through Tailscale Funnel

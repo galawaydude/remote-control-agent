@@ -640,9 +640,14 @@ test('a hidden terminal sends no replay or live bytes until output is enabled', 
   assert.equal(arrivedHidden, false, 'neither the attach replay nor live output crossed the wire');
 
   socket.send(JSON.stringify({ c: 'output', enabled: true }));
-  const replay = await first;
+  assert.deepEqual(JSON.parse((await first).data.toString()), { c: 'history', phase: 'start' });
+  const replay = await term.next();
   assert.equal(replay.binary, true);
   assert.equal(replay.data.toString(), 'replay-héllo');
+  assert.deepEqual(JSON.parse((await term.next()).data.toString()), {
+    c: 'history',
+    phase: 'ready',
+  });
   assert.equal((await term.next()).data.toString(), 'repaint');
 
   terminal.push(Buffer.from('visible-now'));
@@ -672,7 +677,12 @@ test('live bytes stay muted until the refresh replay is sent', async (t) => {
   terminal.push(Buffer.from('newer-live-output'));
   release();
 
-  assert.equal((await first).data.toString(), 'replay-héllo');
+  assert.deepEqual(JSON.parse((await first).data.toString()), { c: 'history', phase: 'start' });
+  assert.equal((await term.next()).data.toString(), 'replay-héllo');
+  assert.deepEqual(JSON.parse((await term.next()).data.toString()), {
+    c: 'history',
+    phase: 'ready',
+  });
   assert.equal((await term.next()).data.toString(), 'repaint');
 });
 
@@ -917,12 +927,13 @@ test('a second viewer joins a live session and can drive it, first one still liv
   // The replay ends in blank rows that push the history into xterm's scrollback,
   // so without the repaint `refreshClients` asks for, this viewer's viewport
   // stays empty for good. `\x1b[H` is that absolutely-positioned redraw.
-  const repaint = await frameMatching(
-    second,
-    (f) => f.binary && f.data.toString('latin1').includes(`\x1b[H`),
-    'the repaint a joining viewer has to be sent',
-  );
-  assert.match(repaint.data.toString('latin1'), new RegExp(MARKER), 'the repaint carries the pane');
+  let repaint = '';
+  for (let i = 0; i < 60 && (!repaint.includes('\x1b[H') || !repaint.includes(MARKER)); i += 1) {
+    const frame = await nextFrame(second, 'the repaint a joining viewer has to be sent');
+    if (frame.binary) repaint += frame.data.toString('latin1');
+  }
+  assert.ok(repaint.includes('\x1b[H'), 'the repaint positions the pane');
+  assert.match(repaint, new RegExp(MARKER), 'the repaint carries the pane');
 
   // ── The second viewer drives the pane ──────────────────────────────────────
   const ack = await frameMatching(second, (f) => !f.binary, "the second viewer's ack");

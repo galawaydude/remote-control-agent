@@ -15,7 +15,7 @@ The browser opens directly into the live terminal.
 
 ## Use the terminal
 
-Tap the terminal and type as you would on the host. Remote Control Agent sends terminal bytes through the session's attached PTY; it does not reinterpret prompts, commands or provider output.
+Tap the terminal and type as you would on the host. Remote Control Agent sends validated input to the attached PTY and streams PTY output as binary bytes; it does not reinterpret prompts, commands or provider output.
 
 The phone accessory bar provides:
 
@@ -49,7 +49,7 @@ Remote Control Agent installs its project-local hook when a session starts. With
 
 ### Codex
 
-Codex runs without hook setup. The optional global hook improves live session-state reporting:
+Codex runs without hook setup. The optional global hook records an exact pane-to-session identity, which makes saved-session Resume unambiguous:
 
 ```sh
 rcagent codex-hook install

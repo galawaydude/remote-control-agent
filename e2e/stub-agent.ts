@@ -10,7 +10,12 @@ import { createInterface } from 'node:readline';
 
 const VERSION = '2.1.220';
 const GREETING = 'stub agent ready';
-const sessionId = randomUUID();
+const args = process.argv.slice(2);
+const resumeAt = args.indexOf('--resume');
+const sessionId =
+  (resumeAt >= 0 ? args[resumeAt + 1] : undefined) ??
+  (args[0] === 'resume' ? args[1] : undefined) ??
+  randomUUID();
 const project = join(
   homedir(),
   '.claude',
@@ -62,7 +67,7 @@ function publish(status: 'busy' | 'idle'): void {
 
 record('assistant', GREETING);
 publish('idle');
-process.stdout.write(`${GREETING}\n`);
+process.stdout.write(`${GREETING}\nstub session ${sessionId}\n`);
 
 const lines = createInterface({ input: process.stdin, output: process.stdout });
 lines.on('line', (line) => {
@@ -72,8 +77,12 @@ lines.on('line', (line) => {
   record('user', text);
 
   if (text === 'print terminal history') {
-    for (let at = 1; at <= 120; at += 1) process.stdout.write(`HISTORY-${at}\n`);
+    for (let at = 1; at <= 240; at += 1) process.stdout.write(`HISTORY-${at}\n`);
     record('assistant', 'printed terminal history');
+  } else if (text === 'exit agent') {
+    record('assistant', 'exiting');
+    lines.close();
+    process.exit(0);
   } else {
     const reply = `echo ${text}`;
     record('assistant', reply);

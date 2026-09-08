@@ -56,6 +56,20 @@ test('past 900px the session rail stays beside the terminal', async ({ page }) =
   await page.getByRole('button', { name: 'Show session sidebar' }).click();
   await expect(page.getByRole('complementary', { name: 'Sessions' })).toHaveCount(1);
 
+  // Exactly at the rail breakpoint the terminal is narrowest. Every phone key,
+  // especially Pg↑ and End, must remain inside the bar and at least 44px wide.
+  await page.setViewportSize({ width: 900, height: 800 });
+  const keybarBox = await box(page.getByRole('navigation', { name: 'Terminal keys' }));
+  for (const button of await page
+    .getByRole('navigation', { name: 'Terminal keys' })
+    .getByRole('button')
+    .all()) {
+    const buttonBox = await box(button);
+    expect(buttonBox.width).toBeGreaterThanOrEqual(44);
+    expect(buttonBox.x).toBeGreaterThanOrEqual(keybarBox.x);
+    expect(buttonBox.x + buttonBox.width).toBeLessThanOrEqual(keybarBox.x + keybarBox.width + 1);
+  }
+
   await page.setViewportSize({ width: 412, height: 915 });
   await expect(page.locator('main')).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'Back to sessions' })).toHaveCount(1);

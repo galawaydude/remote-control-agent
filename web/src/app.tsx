@@ -19,7 +19,6 @@ import * as api from './api.ts';
 import { ApiError } from './api.ts';
 
 import {
-  CODEX,
   DEFAULT_PROVIDER,
   PROVIDERS,
   providerLabel,
@@ -255,6 +254,36 @@ function SessionScreen({
   const [resumeError, setResumeError] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>(session.deadAt === null ? 'connecting' : 'ended');
   const resumable = session.deadAt !== null && session.providerSessionId !== null;
+
+  // The terminal socket can learn that a pane ended before this immutable
+  // snapshot does. A dead provisional row also gets one bounded identity lookup
+  // when opened, so a server restart cannot hide an otherwise resumable session.
+  useEffect(() => {
+    const endedNow = session.deadAt === null && status === 'ended';
+    const needsIdentity = session.deadAt !== null && session.providerSessionId === null;
+    if (!endedNow && !needsIdentity) return;
+    let active = true;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const refresh = async () => {
+      try {
+        const current = await api.getSession(session.id);
+        if (!active) return;
+        if (current.deadAt === null) retry = setTimeout(() => void refresh(), 1000);
+        else if (endedNow || current.providerSessionId !== session.providerSessionId) {
+          onResumed(current);
+        }
+      } catch (failure) {
+        if (!active) return;
+        if (failure instanceof ApiError && failure.status === 401) onSignedOut();
+        else retry = setTimeout(() => void refresh(), 1000);
+      }
+    };
+    void refresh();
+    return () => {
+      active = false;
+      clearTimeout(retry);
+    };
+  }, [onResumed, onSignedOut, session.deadAt, session.id, session.providerSessionId, status]);
 
   const resume = async () => {
     if (!resumable || resuming) return;
@@ -670,36 +699,6 @@ function Sessions({
   );
 }
 
-/**
- * What Codex's live “waiting for you” badge costs, said before it is bought.
- *
- * Codex trust-gates each entry in its own hooks file, so tether's hook means a
- * security prompt on the user's own machine. The captain's decision is to ask
- * once and explain first (`decision-codex-hook-trust-install.md`), which is a UI
- * obligation as much as a CLI one: a user who accepts because a tool told them
- * to has not made a decision.
- *
- * It appears here, next to the choice it is about, and nowhere else — no banner
- * on the list, no warning beside a Codex session that is running without it.
- * Declining is a supported configuration and everything but that one badge keeps
- * working, so a UI that kept mentioning it would be nagging about a working
- * setup. The install itself stays a CLI command on purpose: it writes to a file
- * tether does not own, and that should have to be asked for by name.
- */
-function CodexHookNote() {
-  return (
-    <p class="note">
-      Codex works here with no setup: the terminal and working/idle list state come from files Codex
-      already writes. Only the live “waiting for you” list badge needs more — a small script Remote
-      Control Agent adds to your Codex hooks file, which Codex then asks you to trust once. It
-      appends one line under the app’s private state directory and does nothing else. Run{' '}
-      <code>rcagent codex-hook install</code> on the machine to add it (it explains everything first
-      and backs the file up), or <code>rcagent codex-hook remove</code> to remove it. Skip it and
-      you lose that badge and nothing else.
-    </p>
-  );
-}
-
 function NewSession({
   suggestions,
   onClose,
@@ -789,7 +788,6 @@ function NewSession({
             </option>
           ))}
         </select>
-        {provider === CODEX && <CodexHookNote />}
 
         <label for="cwd">Working directory</label>
         <input

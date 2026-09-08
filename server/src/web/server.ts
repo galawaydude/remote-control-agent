@@ -312,7 +312,7 @@ export function buildServer(options: ServerOptions): FastifyInstance {
     // In this `after`, not inline: `@fastify/websocket` upgrades a route through
     // an `onRoute` hook it only installs once its own registration has run, and a
     // route added before that silently stays a plain HTTP route.
-    registerTermSocket(app, options.terminals, options.db, options.socket);
+    registerTermSocket(app, options.terminals, options.db, conversations, options.socket);
     registerConvSocket(app, options.db, conversations);
   });
   // Closing the server must take the attach PTYs and the transcript tailers with

@@ -54,8 +54,8 @@ export type ConversationEvent =
    * Not a message: a command is addressed to the agent's own CLI rather than to
    * the model, and the provider records it as bookkeeping around the turn rather
    * than as part of it. It is here because it is the **only** evidence outside
-   * the pane that a command tether sent actually ran — the composer can send
-   * one, so the conversation has to be able to show it landing.
+   * the pane that a compatibility client sent actually ran — the retained
+   * conversation API can send one, so it has to be able to show it landing.
    *
    * One kind for both halves because they arrive as two separate records with
    * nothing joining them but file order: `output` says which this is.
@@ -214,6 +214,12 @@ export type ServerFrame =
    * and the rest of them stop offering buttons.
    */
   | { c: 'answer'; callId: string; outcome: PermissionOutcome }
+  /**
+   * Bounds a terminal history replay. `ready` means the captured bytes were
+   * queued before this frame; the browser still waits for xterm's write callback
+   * before scrolling.
+   */
+  | { c: 'history'; phase: 'start' | 'ready' }
   /** Input `seq` will not be applied again. The client stops retrying it. */
   | { c: 'ack'; seq: number };
 
@@ -222,13 +228,10 @@ export type ServerFrame =
  * {@link ClientFrame} because the two sockets share none of it: there is no
  * sequencing here and nothing to ack.
  *
- * `watching` is whether the conversation pane is the one in front — which is all
- * the client claims here, and not whether the screen is on. The session screen
- * keeps both panes mounted, so being subscribed says nothing about it, and the
- * server holds a permission prompt only for a viewer whose front pane is the one
- * that answers it — in the browser app, `false` is exactly "the terminal is
- * summoned over the conversation". Absent, the server assumes `true`: that is
- * what opening a session lands on.
+ * `watching` is whether a compatibility client's conversation pane is in front,
+ * not whether its screen is on. The first-party browser never opens this socket,
+ * so it can never make a permission hold eligible. Absent, the compatibility API
+ * preserves its historical `true` default.
  */
 export type ConvClientFrame = { c: 'watch'; watching: boolean };
 
@@ -258,9 +261,9 @@ export type ClientFrame =
    */
   | { c: 'key'; seq: number; keys: string[] }
   /**
-   * Whether terminal bytes should cross the network. The composer keeps this
-   * socket open while the conversation is in front, so output is muted there;
-   * turning it back on starts with tmux's exact replay.
+   * Whether terminal bytes should cross the network. Compatibility clients may
+   * keep this socket while another pane is in front; turning output back on
+   * starts with tmux's exact replay.
    */
   | { c: 'output'; enabled: boolean }
   /** Last viewer to send this wins; `window-size manual` keeps it off other sessions. */
