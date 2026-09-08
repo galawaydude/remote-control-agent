@@ -146,6 +146,14 @@ test('the history route reads the whole transcript and numbers it from 1', async
   assert.deepEqual(seqsOf((await h.conversations.history(h.session)).events), [1, 2]);
 });
 
+test('a dead provisional row gets one identity lookup without a conversation', async (t) => {
+  const h = await harness(t);
+  await writeFile(h.transcript, userRecord(1));
+
+  await h.conversations.discoverIdentity(h.session);
+  assert.equal(getSession(h.db, h.session.id)?.providerSessionId, PROVIDER_SESSION);
+});
+
 function seqsOf(events: readonly { seq: number }[]): number[] {
   return events.map((e) => e.seq);
 }
@@ -1086,6 +1094,14 @@ async function writeStatus(
     }),
   );
 }
+
+test('terminal metadata follows the pane without opening a conversation', async (t) => {
+  const p = await polling(t, 0);
+  await writeStatus(p.home, p.pid, {});
+
+  assert.equal(await p.conversations.syncPaneMetadata(p.session), true);
+  assert.equal(getSession(p.db, p.session.id)?.providerSessionId, PROVIDER_SESSION);
+});
 
 /** The last state announced, once it is the one being waited for. */
 async function waitForState(

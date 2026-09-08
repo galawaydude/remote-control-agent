@@ -13,31 +13,28 @@
 
 import type { Session, SessionState, TrustReport } from '@tether/shared';
 import { Fragment } from 'preact';
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useState } from 'preact/hooks';
 
 import * as api from './api.ts';
 import { ApiError } from './api.ts';
-import { elapsedLabel } from './conversation.ts';
-import { ConversationView } from './conversation.tsx';
+
 import {
-  CODEX,
   DEFAULT_PROVIDER,
   PROVIDERS,
   providerLabel,
   trustAsk,
   unresumableNote,
-  WAITING_TERMINAL_LABEL,
 } from './providers.ts';
 import { crumbs, groupSessions } from './sessions.ts';
 import { TerminalView } from './terminal.tsx';
-import { STATUS_TEXT, agentStateTrusted, type Status } from './status.ts';
+import { STATUS_TEXT, type Status } from './status.ts';
 
 /** How often the list refreshes. tmux reconciliation happens server-side per read. */
 const POLL_MS = 5000;
 
 /**
  * Where a rail beside the session starts paying: below this, 340px of list plus
- * a conversation is two cramped columns rather than one good one. It matches the
+ * a terminal is two cramped columns rather than one good one. It matches the
  * last block of `style.css`, which is where the rest of the desktop shape lives.
  */
 const WIDE = '(min-width: 900px)';
@@ -99,44 +96,7 @@ function useWide(): boolean {
   return wide;
 }
 
-/**
- * How long the current turn has been running, once that is news — `null` the
- * rest of the time, which is nearly all of it. The clock starts when the turn
- * does and stops when it ends, so a session sitting idle costs no timer at all.
- *
- * The tick is 1s and unconditional while a turn runs, so **this is a leaf of its
- * own** rather than a hook on the session screen. A re-render is a re-render of
- * the component holding the state and everything under it: from the screen, one
- * tick would re-diff the whole conversation — every card, every markdown tree,
- * every diff row, thousands of nodes on a session with a few `Edit`s — once a
- * second, precisely while the agent is working. From here it re-renders one
- * `<span>`. The alternative to ticking unconditionally is a timer that only
- * starts at the threshold, which needs a second timer to arm it.
- */
-function ElapsedChip({ running }: { running: boolean }) {
-  const [now, setNow] = useState(() => Date.now());
-  const startedAt = useRef<number | null>(null);
-  if (running && startedAt.current === null) startedAt.current = Date.now();
-  if (!running) startedAt.current = null;
-
-  useEffect(() => {
-    if (!running) return;
-    setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [running]);
-
-  const elapsed = running ? elapsedLabel(startedAt.current, now) : null;
-  // Mono, because it is the machine reporting. Nothing at all until the turn is
-  // long enough to be worth saying — see `elapsedLabel`.
-  return elapsed === null ? null : <span class="chip-elapsed">{elapsed}</span>;
-}
-
-/**
- * What the agent is doing, in the user's words rather than the provider's.
- * `waiting` is the one that matters — it is the whole reason PR #10 exists — so
- * it is the one that gets a banner rather than a chip.
- */
+/** Provider state shown on live rows in the session list. */
 export const STATE_TEXT: Record<SessionState, string> = {
   busy: 'Working',
   idle: 'Idle',
@@ -246,7 +206,7 @@ export function App() {
       <SessionScreen
         // A dead row resumed under the same id needs fresh sockets just as much
         // as switching rows does. The provider process is new even though the
-        // conversation identity deliberately is not.
+        // saved provider identity deliberately is not.
         key={`${open.id}:${open.deadAt ?? 'live'}`}
         session={open}
         onBack={closeSession}
@@ -273,34 +233,8 @@ export function App() {
   );
 }
 
-/** The two channels a session screen holds open, both for its whole life. */
-type Pane = 'conversation' | 'terminal';
-
-/**
- * The session screen: the conversation, and a terminal summoned over it.
- *
- * There is no tab pair and no choice to make on arrival — opening a session
- * lands on the conversation, which is the interface. The terminal is an escape
- * hatch for what tether has no control for yet (slash commands, trust prompts,
- * crashes, an agent's own permission dialog after a hold expires), so it is
- * summoned from the header, covers the conversation while it is up, and is
- * dismissed back out of the way.
- *
- * Both panes still stay mounted and the one behind is hidden with
- * `visibility: hidden` rather than `display: none` or an unmount. That is the
- * whole of "summoning and dismissing preserves both scroll positions": a
- * laid-out element keeps its `scrollTop`, so neither view needs to save and
- * restore one, and xterm keeps a real size instead of being fitted to 0×0 and
- * back on every summon — which would resize the tmux pane and make the agent
- * redraw its prompt into the scrollback for every other viewer too. The overlay
- * occupies the same box open or closed for the same reason. Unmounting the
- * terminal would additionally cost a full tmux replay per tap, and unmounting
- * the conversation a refetch.
- *
- * The two views share nothing but this frame. They are two renderings of one
- * process from two independent sources (report §3) — there is no cursor between
- * them to get out of sync, and nothing here tries to reconcile them.
- */
+/** A session is one persistent terminal. Provider-specific transcripts stay out
+ * of the working surface; tmux is the universal source of truth. */
 function SessionScreen({
   session,
   onBack,
@@ -316,88 +250,54 @@ function SessionScreen({
   sessionsCollapsed: boolean;
   onShowSessions: () => void;
 }) {
-  const [summoned, setSummoned] = useState(false);
   const [resuming, setResuming] = useState(false);
   const [resumeError, setResumeError] = useState<string | null>(null);
+  const [status, setStatus] = useState<Status>(session.deadAt === null ? 'connecting' : 'ended');
   const resumable = session.deadAt !== null && session.providerSessionId !== null;
+
+  // The terminal socket can learn that a pane ended before this immutable
+  // snapshot does. A dead provisional row also gets one bounded identity lookup
+  // when opened, so a server restart cannot hide an otherwise resumable session.
+  useEffect(() => {
+    const endedNow = session.deadAt === null && status === 'ended';
+    const needsIdentity = session.deadAt !== null && session.providerSessionId === null;
+    if (!endedNow && !needsIdentity) return;
+    let active = true;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const refresh = async () => {
+      try {
+        const current = await api.getSession(session.id);
+        if (!active) return;
+        if (current.deadAt === null) retry = setTimeout(() => void refresh(), 1000);
+        else if (endedNow || current.providerSessionId !== session.providerSessionId) {
+          onResumed(current);
+        }
+      } catch (failure) {
+        if (!active) return;
+        if (failure instanceof ApiError && failure.status === 401) onSignedOut();
+        else retry = setTimeout(() => void refresh(), 1000);
+      }
+    };
+    void refresh();
+    return () => {
+      active = false;
+      clearTimeout(retry);
+    };
+  }, [onResumed, onSignedOut, session.deadAt, session.id, session.providerSessionId, status]);
 
   const resume = async () => {
     if (!resumable || resuming) return;
     setResuming(true);
     setResumeError(null);
     try {
-      // The exact provider conversation is already bound to this registry row;
-      // no chooser in the terminal is involved.
       onResumed(await api.resumeSession(session.id));
     } catch (failure) {
       setResumeError(messageOf(failure));
       setResuming(false);
     }
   };
-  // One chip, two channels: it reports on whichever pane is in front, because
-  // "Reconnecting…" is only actionable about the thing being looked at. The
-  // agent's own busy/idle/waiting chip sits beside it and is a different fact.
-  const [status, setStatus] = useState<Record<Pane, Status>>({
-    conversation: 'connecting',
-    // A dead conversation has history to read but no terminal to attach. Do not
-    // manufacture a failed PTY attempt just to rediscover the fact on the row.
-    terminal: session.deadAt === null ? 'connecting' : 'ended',
-  });
-  const report = (id: Pane) => (next: Status) =>
-    setStatus((current) => (current[id] === next ? current : { ...current, [id]: next }));
-
-  // The agent's own state, from the `conv` channel's `state` frame. It sits
-  // above both panes rather than inside the conversation: with the terminal
-  // summoned it is exactly the thing that says why, and the banner under it is
-  // what sends a user to the terminal in the first place.
-  const [agent, setAgent] = useState<{ state: SessionState; detail?: string }>({ state: 'idle' });
-
-  // The one thing the two panes do share, and only because the wire says so: a
-  // composed message is an `input` frame on the terminal channel, which is where
-  // input sequencing lives. Everything they show still comes from two
-  // independent sources with no cursor between them (report §3).
-  const sender = useRef<((message: string) => void) | null>(null);
-
-  /** Which channel the header's chip reports on: the one that is on screen. */
-  const front: Pane = summoned ? 'terminal' : 'conversation';
-
-  /**
-   * Whether anything derived from the `state` frame may still be shown.
-   *
-   * One predicate everywhere the agent's own state reaches the screen — the
-   * chip, the banners and the live region — because the fault was never in any
-   * one of them: it was **Idle** printed beside **Session not found**, two
-   * sources contradicting each other with nothing saying which tether believed.
-   * A rule applied to some of them would just move that contradiction to the
-   * rest.
-   *
-   * Both channels and never `front`: the agent's state is one fact about one
-   * process, so which pane happens to be on screen cannot be part of the answer
-   * — and `ended` on either channel is the session being over for both, however
-   * live the other one still looks. `agentStateTrusted` is where that is
-   * decided, and where the reason for each state's side of the line is written.
-   */
-  const agentKnown = agentStateTrusted(status.conversation, status.terminal);
-
-  // The banner's link focuses the same header toggle it operates, so a keyboard
-  // user returns to one stable control whose visible label follows the pane.
-  const hatch = useRef<HTMLButtonElement>(null);
-  // The banner's link is the mirror of that: it is the control that summons, and
-  // it is gone once the terminal is up because it would be offering what is
-  // already on screen — so it hands focus to the header control for the same
-  // reason, rather than dropping it to `<body>`.
-  const summon = useCallback(() => {
-    setSummoned(true);
-    hatch.current?.focus();
-  }, []);
-
-  // Said in two places, and it has to be the same sentence in both: the banner
-  // when the conversation is on screen, the terminal overlay when it is up.
-  const waitingDetail = agent.detail ?? 'The agent has stopped and wants an answer.';
 
   return (
-    // The `<main>` in both shapes: on a phone the list has unmounted, and in the
-    // rail shape the list is the complementary landmark beside this one.
     <main class="screen">
       <header class="bar">
         <button class="ghost bar-back" onClick={onBack} aria-label="Back to sessions">
@@ -418,22 +318,7 @@ function SessionScreen({
         <div class="bar-title">
           <strong>{session.title}</strong>
         </div>
-        {session.deadAt === null ? (
-          /* A toggle rather than an open-only control: it remains on screen in
-             both states, and `aria-expanded` names the sheet it summons. */
-          <button
-            ref={hatch}
-            type="button"
-            class="ghost bar-term"
-            aria-expanded={summoned}
-            onClick={() => setSummoned((open) => !open)}
-          >
-            {summoned ? 'Conversation' : 'Terminal'}
-          </button>
-        ) : resumable ? (
-          /* Resume is a conversation action. The row already names the exact
-             provider session, so asking the provider to show a terminal chooser
-             here would make the user select the same conversation twice. */
+        {resumable && (
           <button
             type="button"
             class="primary bar-resume"
@@ -443,58 +328,18 @@ function SessionScreen({
           >
             {resuming ? 'Resuming…' : 'Resume'}
           </button>
-        ) : null}
-        {/* One non-wrapping status cluster. While the channel is healthy its
-            state is a dot and the agent gets the word; when the channel is not
-            healthy its own word replaces the agent's. That bound is what keeps
-            this bar one fixed row at every phone width. */}
+        )}
         <div class="bar-chips">
-          {/* Gone entirely once the channel has finished, rather than shown
-              stale beside it. "Idle" next to "Session not found" is tether
-              reporting the agent alive and the session missing at the same
-              time, which is what sent a captain looking for lost work — see
-              `agentStateTrusted`. The 44px controls already fix this row's
-              height, so changing its compact status contents moves no pane.
-
-              The same `agentKnown` as the banners and the live region: this is
-              the agent's fact wherever it is printed, and the chip beside it is
-              the channel's. */}
-          {agentKnown && status[front] === 'live' && (
-            <span class={`chip chip-agent-${agent.state}`}>
-              {STATE_TEXT[agent.state]}
-              {/* Its own component, so the 1s tick re-renders this span and not
-                  the conversation under it — see `ElapsedChip`. */}
-              <ElapsedChip running={agent.state === 'busy'} />
-            </span>
-          )}
-          <span class={`chip chip-${status[front]}`} role="status">
-            {STATUS_TEXT[status[front]]}
+          <span class={`chip chip-${status}`} role="status">
+            {STATUS_TEXT[status]}
           </span>
         </div>
       </header>
 
-      {/* Where this session is. Out of the bar and onto its own strip, which is
-          what lets the directory be read as a path rather than as a subtitle —
-          and the strip is a row, so the branch it will one day sit beside is a
-          segment to append rather than a redesign. Nothing is reserved for one
-          here: tether does not know the branch yet, and a placeholder for a
-          fact the server cannot supply is furniture.
-
-          Its height is constant, which matters as much here as on `.bar`: this
-          box sits above the pane xterm is fitted to. `nowrap`, fixed padding,
-          and a directory that cannot change under a running session.
-
-          Not a `<nav>`: a navigation landmark with nothing to navigate to is a
-          landmark a screen-reader user lands in and leaves again. The segments
-          are decoration over a fact, so the fact is said once, whole, in the
-          hidden line — hearing "tmp tether-shots api" with the separators
-          stripped is not hearing a path. */}
       <div class="crumbs">
         <span class="sr-only">Working directory: {session.cwd}</span>
         <span class="crumb-path" aria-hidden="true" title={session.cwd}>
           {crumbs(session.cwd).map((segment, at, all) => {
-            // A phone gets the useful end of the path rather than seven tiny,
-            // ellipsised fragments. CSS reveals the full chain in the rail layout.
             const earlier = at < all.length - 2 ? ' crumb-earlier' : '';
             return (
               <Fragment key={at}>
@@ -514,120 +359,21 @@ function SessionScreen({
         </p>
       )}
 
-      {/* The one announcer of the agent's own state, and it is always in the
-          tree: a live region inserted at the same moment as its text is
-          announced unreliably, while one whose content changes is announced
-          dependably. Empty until the agent stops, so busy/idle is not narrated
-          — and separate from anything on screen, so what a blind user hears
-          does not depend on whether the terminal happens to be summoned. */}
-      <p class="sr-only" aria-live="polite" aria-atomic="true">
-        {agentKnown && agent.state === 'waiting' ? `Waiting for you. ${waitingDetail}` : ''}
-      </p>
-
       <div class="panes">
-        {/*
-         * `inert` while the terminal is over it, which is the platform's own
-         * word for "visible but not to be interacted with": it takes the
-         * conversation out of the tab order and the accessibility tree without
-         * touching layout, so `scrollTop` and xterm's size survive — everything
-         * `display: none` or an unmount would cost. Preact removes the attribute
-         * outright for `false`, so there is no browser where this sticks on.
-         */}
-        <div class="pane" inert={summoned}>
-          <ConversationView
-            sessionId={session.id}
-            provider={session.provider}
-            /*
-             * The watch/hold decision, and it is the same one the tab pair made
-             * for the same reason: with the terminal summoned, nobody is
-             * watching the conversation.
-             *
-             * Both panes are mounted whatever is on screen, so the socket alone
-             * cannot say — and what the server does with this is hold a
-             * proposed tool call (`#holdFor` in `machine/conversations.ts`).
-             * The terminal is summoned precisely to answer the agent *there*:
-             * a slash command, a trust prompt, or the provider's own permission
-             * dialog after a hold expired. Holding while it is up would stall
-             * the agent in front of the very surface that answers it, and the
-             * conversation's own Approve/Deny is behind an overlay nobody can
-             * see. Dismissing hands watching straight back, and a hold released
-             * by summoning ends as a `timeout` — the question goes to the
-             * provider's own prompt, which is where the user already is.
-             */
-            watching={!summoned}
-            onStatus={report('conversation')}
-            onState={(state, detail) =>
-              setAgent((current) =>
-                current.state === state && current.detail === detail
-                  ? current
-                  : { state, ...(detail === undefined ? {} : { detail }) },
-              )
-            }
-            sender={sender}
-            terminal={status.terminal}
-            /*
-             * The same control the waiting banner's link uses, for the same
-             * reason: the composer can send a slash command, and some of them —
-             * `/resume` above all — leave the agent on a chooser only the pane
-             * can show. The note that says so carries this rather than telling a
-             * phone user to go and find the header button.
-             */
-            onSummon={summon}
-          />
-        </div>
-        {/* Over the conversation, never beside it: a permanently visible
-            terminal would make watching permanently true and change when agents
-            are held. Labelled rather than `role="dialog"` with a focus trap —
-            the conversation behind stays live and a trap would need Escape to
-            release it, which is a key the terminal itself has to receive. */}
-        <section
-          class={summoned ? 'pane termsheet' : 'pane termsheet pane-off'}
-          aria-label="Terminal"
-        >
-          {/* No second terminal header: the always-visible session control now
-              says Conversation and is the direct way back. This line overlays
-              the terminal only while it has a reason to say. */}
-          {agentKnown && agent.state === 'waiting' && summoned && (
-            <p class="termsheet-waiting">
-              <strong>Waiting for you.</strong> {waitingDetail}
-            </p>
-          )}
-          {session.deadAt === null && (
-            <TerminalView
-              session={session}
-              active={summoned}
-              onStatus={report('terminal')}
-              onSignedOut={onSignedOut}
-              sender={sender}
-            />
+        <section class="pane termsheet" aria-label="Terminal">
+          {session.deadAt === null ? (
+            <TerminalView session={session} onStatus={setStatus} onSignedOut={onSignedOut} />
+          ) : (
+            <div class="terminal-ended">
+              <strong>Session ended</strong>
+              <p class="muted">
+                {resumable
+                  ? 'Resume it to open the terminal again.'
+                  : (unresumableNote(session) ?? 'This terminal cannot be resumed.')}
+              </p>
+            </div>
           )}
         </section>
-        {/*
-         * Inside `.panes` and absolutely positioned over it, never above it in
-         * the flow. The banner mounts and unmounts as the agent stops and
-         * starts, and anything that changes this container's height refits
-         * xterm, which resizes the tmux pane, which makes the agent redraw its
-         * prompt into the scrollback for *every other viewer* of the session —
-         * the same rule `.bar`'s constant height defends. Overlaying costs the
-         * conversation's topmost rows until it is scrolled, which is affordable
-         * because the conversation sticks to its end; padding the panes to make
-         * room would reintroduce exactly the resize this removes.
-         *
-         * Not rendered at all while the terminal is up: the sheet carries the
-         * fact there instead, so nothing is laid over the way out.
-         *
-         * It is also the only thing on this overlay that takes a tap. The
-         * conversation underneath stays live, because covering the top of a
-         * list is not the same as disabling it.
-         */}
-        {agentKnown && agent.state === 'waiting' && !summoned && (
-          <p class="waiting">
-            <strong>Waiting for you.</strong> {waitingDetail}{' '}
-            <button class="link" onClick={summon}>
-              {WAITING_TERMINAL_LABEL}
-            </button>
-          </p>
-        )}
       </div>
     </main>
   );
@@ -661,26 +407,33 @@ function Login({ onDone }: { onDone: () => void }) {
   };
 
   return (
-    <main class="centre">
-      <form class="card" onSubmit={submit}>
-        <h1 class="wordmark">Remote Control Agent</h1>
-        <p class="tagline">Your coding agents, on your machine, from anywhere.</p>
-        <label for="password">Password</label>
-        <input
-          id="password"
-          type="password"
-          autocomplete="current-password"
-          // The only field on the only screen; not focusing it costs a tap.
-          autofocus
-          value={password}
-          onInput={(event) => setPassword((event.target as HTMLInputElement).value)}
-        />
+    <main class="centre login">
+      <form class="card login-card" onSubmit={submit}>
+        <div class="login-head">
+          <p class="login-kicker">
+            <span aria-hidden="true" /> Private access
+          </p>
+          <h1 class="wordmark">Remote Control Agent</h1>
+          <p class="tagline">Your coding agents, on your machine, from anywhere.</p>
+        </div>
+        <div class="login-field">
+          <label for="password">Password</label>
+          <input
+            id="password"
+            type="password"
+            autocomplete="current-password"
+            // The only field on the only screen; not focusing it costs a tap.
+            autofocus
+            value={password}
+            onInput={(event) => setPassword((event.target as HTMLInputElement).value)}
+          />
+        </div>
         {error !== null && (
           <p class="error" role="alert">
             {error}
           </p>
         )}
-        <button type="submit" class="primary" disabled={busy || password === ''}>
+        <button type="submit" class="primary login-submit" disabled={busy || password === ''}>
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
@@ -946,36 +699,6 @@ function Sessions({
   );
 }
 
-/**
- * What Codex's live “waiting for you” badge costs, said before it is bought.
- *
- * Codex trust-gates each entry in its own hooks file, so tether's hook means a
- * security prompt on the user's own machine. The captain's decision is to ask
- * once and explain first (`decision-codex-hook-trust-install.md`), which is a UI
- * obligation as much as a CLI one: a user who accepts because a tool told them
- * to has not made a decision.
- *
- * It appears here, next to the choice it is about, and nowhere else — no banner
- * on the list, no warning beside a Codex session that is running without it.
- * Declining is a supported configuration and everything but that one badge keeps
- * working, so a UI that kept mentioning it would be nagging about a working
- * setup. The install itself stays a CLI command on purpose: it writes to a file
- * tether does not own, and that should have to be asked for by name.
- */
-function CodexHookNote() {
-  return (
-    <p class="note">
-      Codex works here with no setup: the conversation, the terminal, and whether it is working or
-      idle all come from files Codex already writes. Only the live “waiting for you” badge needs
-      more — a small script Remote Control Agent adds to your Codex hooks file, which Codex then
-      asks you to trust once. It appends one line under the app’s private state directory and does
-      nothing else. Run <code>rcagent codex-hook install</code> on the machine to add it (it
-      explains everything first and backs the file up), or <code>rcagent codex-hook remove</code> to
-      remove it. Skip it and you lose that badge and nothing else.
-    </p>
-  );
-}
-
 function NewSession({
   suggestions,
   onClose,
@@ -1065,7 +788,6 @@ function NewSession({
             </option>
           ))}
         </select>
-        {provider === CODEX && <CodexHookNote />}
 
         <label for="cwd">Working directory</label>
         <input

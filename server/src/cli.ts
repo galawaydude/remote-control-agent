@@ -101,20 +101,19 @@ function codexHookExplanation(hooksPath: string, shimPath: string): string {
     'That command is a script Remote Control Agent writes. Codex runs it on each',
     'event, and it appends one JSON line under the app’s private state directory.',
     '',
-    'On PermissionRequest — and on no other event — it also asks Remote Control',
-    'Agent over loopback whether you have answered the prompt, and waits for you',
-    'for as long as Remote Control Agent is configured to wait. It talks to nothing else and',
+    'On PermissionRequest — and on no other event — it also contacts Remote Control',
+    'Agent over loopback. The first-party terminal UI never answers for Codex:',
+    'permission prompts stay in Codex’s own terminal. It talks to nothing else and',
     'to nowhere else.',
     '',
-    'Remote Control Agent needs it for two things: to know that a session is',
-    '*waiting for you*, and to let you answer outside the terminal.',
-    'Everything else — the conversation, the terminal, working and idle — is read',
-    'from files Codex already writes.',
+    'The SessionStart record lets Remote Control Agent associate Codex’s saved',
+    'session with the exact tmux pane, so a later Resume opens the right session.',
+    'Terminal output itself is never parsed.',
     '',
     'The next time you start Codex it will ask you to review and trust this hook.',
-    'Declining is a perfectly good answer: you lose the live “waiting” badge and',
-    'the Approve/Deny buttons, the prompt is still there in the terminal where it',
-    'has always been, and Remote Control Agent will not ask again.',
+    'Declining is a perfectly good answer: the terminal and its permission prompts',
+    'still work, and Remote Control Agent falls back to Codex’s rollout metadata.',
+    'Remote Control Agent will not ask again.',
     '',
     'Your existing hooks file is backed up first, and existing entries are kept.',
     'Undo any time with `rcagent codex-hook remove`.',
@@ -127,9 +126,8 @@ function codexHookExplanation(hooksPath: string, shimPath: string): string {
  * Both halves matter and neither is guessed at: a shim whose bytes are not the
  * ones this tether writes cannot POST, and a `PermissionRequest` entry not
  * carrying {@link PERMISSION_TIMEOUT_SECONDS} is one `machine/conversations.ts`
- * refuses to hold a turn behind. Either way the badge still works and the
- * buttons cannot, which is a different sentence from "not installed" and needs
- * saying — once, here.
+ * refuses to hold for a compatibility client. The terminal-only first-party UI
+ * never holds it either way; status still reports stale installed bytes here.
  */
 function outdated(status: HookStatus): boolean {
   return (
@@ -173,10 +171,9 @@ async function codexHookCommand(argv: readonly string[]): Promise<number> {
         ...(before.unreadable === undefined ? [] : [`problem:     ${before.unreadable}`]),
         `features.hooks: ${before.featureEnabled ? 'true' : 'false — Codex will not run any hook until this is set'}`,
         '',
-        'Without the hook Remote Control Agent still shows the conversation, terminal, and',
-        'whether a session is working or idle, and a permission prompt is still',
-        'answered in the terminal. The hook adds the live “waiting for you” badge',
-        'and the Approve/Deny buttons, and nothing else.',
+        'Without the hook the terminal and Codex permission prompts still work.',
+        'The hook gives Remote Control Agent an exact pane-to-session identity for',
+        'saved-session Resume; it does not add browser approval controls.',
         // Only for an installation tether can see is out of date, and only here,
         // in a command the user typed. `not installed` is a supported answer and
         // gets nothing added to it — a user who declined on purpose is not
@@ -198,10 +195,9 @@ async function codexHookCommand(argv: readonly string[]): Promise<number> {
                     '  so Remote Control Agent will not hold a turn behind it',
                   ]),
               '',
-              'It still reports that a session is waiting for you, but offers no',
-              'Approve/Deny buttons; answer in the terminal as before. Run',
-              '`rcagent codex-hook install` to update it. The conversation and terminal',
-              'and working/idle are unaffected either way.',
+              'The terminal and its permission prompts are unaffected. Run',
+              '`rcagent codex-hook install` to update the identity record and the',
+              'optional compatibility API.',
             ]
           : []),
       ].join('\n') + '\n',

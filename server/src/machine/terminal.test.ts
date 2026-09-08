@@ -156,8 +156,13 @@ async function reconstruct(terminals: Terminals, session: string): Promise<strin
     quiet = 0;
     term.write(bytes, () => pending--);
   });
-  // The attach repaint arrives asynchronously; settle on silence rather than a
-  // fixed sleep, then flush xterm's own write queue.
+  // The attach repaint arrives asynchronously. Under load it can begin after a
+  // quiet spell, so first wait for its last generated row, then settle on silence.
+  await waitFor(
+    async () =>
+      pending === 0 && screenRows(term).some((row) => row.startsWith(`LINE-${CONTENT_LINES}`)),
+    'the attach repaint',
+  );
   while (quiet < 6 || pending > 0) {
     await delay(50);
     quiet++;

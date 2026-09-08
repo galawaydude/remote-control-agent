@@ -209,8 +209,8 @@ export function createTerminals(socket: string, historyLines = DEFAULT_HISTORY_L
     const { spawn } = await loadPty();
     const size = await paneSize(socket, session);
     // Captured before the attach exists, so the repaint the attach emits lands
-    // strictly after the history it is meant to sit below. A conversation-only
-    // viewer skips it entirely and asks `refresh` when its terminal is summoned.
+    // strictly after the history it is meant to sit below. An input-only
+    // compatibility viewer skips it and asks `refresh` when output is enabled.
     if (initialReplay) viewer(await replay(session, size.rows));
 
     const pty = spawn('tmux', tmuxArgv(socket, ['attach-session', '-t', session]), {

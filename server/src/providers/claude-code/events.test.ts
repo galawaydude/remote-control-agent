@@ -374,6 +374,20 @@ test('a read-only tool is proposed but not worth stopping the agent for', () => 
   assert.equal(unknown?.signal === 'pending' && unknown.hold, 'perhaps');
 });
 
+test('a provider-decided permission mode is observed, not pre-empted by a hold', () => {
+  for (const permissionMode of ['auto', 'dontAsk', 'bypassPermissions']) {
+    const signal = mapHook({
+      ...(preToolUse('Bash') as object),
+      permission_mode: permissionMode,
+    });
+    assert.equal(signal?.signal === 'pending' && signal.hold, 'never', permissionMode);
+  }
+
+  // Interactive modes still use Remote Control Agent's ordinary hold path.
+  const manual = mapHook({ ...(preToolUse('Bash') as object), permission_mode: 'default' });
+  assert.equal(manual?.signal === 'pending' && manual.hold, 'perhaps');
+});
+
 test('a real Notification is the waiting state, in Claude Code’s own words', () => {
   const warnings: string[] = [];
   assert.deepEqual(

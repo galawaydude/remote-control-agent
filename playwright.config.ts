@@ -5,12 +5,9 @@ import { join } from 'node:path';
 
 /**
  * One browser, one worker — and one server between every spec, which is why each
- * spec works in its own directory. The end-to-end tests exist to check the claims
- * nothing else can (report §8): that a reload loses nothing, that a permission
- * prompt is on screen before the transcript has anything to say, that a composed
- * message reaches the agent and appears exactly once, that each session shows its
- * own conversation, that a composer option control reaches the pane under the
- * agent that offers it, and that past 900px the layout is a different shape.
+ * spec works in its own directory. The end-to-end tests drive the claims nothing
+ * else can (report §8): a real tmux/PTy/WebSocket terminal, input, scrollback,
+ * reload, exact provider resume, small-phone reachability and the desktop rail.
  *
  * Everything below the sandbox line is deliberate. `TETHER_ALLOWED_ROOTS` is
  * resolved through `realpath` because tether resolves the directory it is given
@@ -22,15 +19,6 @@ import { join } from 'node:path';
 // against real paths, never strings.
 const dir = join(realpathSync(tmpdir()), 'tether-e2e');
 const port = '8788';
-
-/**
- * How long tether holds a proposed tool call, in seconds — short enough that
- * `permission.spec.ts` can watch one expire without a slow test, long enough
- * that a tap in the two specs above it is never racing this on a loaded CI box.
- * The spec reads it too, so the wait and the setting cannot drift apart.
- */
-const holdSeconds = '15';
-process.env['TETHER_E2E_HOLD_SECONDS'] = holdSeconds;
 
 // Read by both halves: `e2e/serve.ts` sets the password, and the spec logs in
 // with it. This config is evaluated in the runner and in every worker, so the
@@ -94,7 +82,6 @@ export default defineConfig({
       RCAGENT_STATE_DIR: join(dir, 'state'),
       RCAGENT_ALLOWED_ROOTS: dir,
       RCAGENT_TMUX_SOCKET: 'tether-e2e',
-      RCAGENT_PERMISSION_TIMEOUT: holdSeconds,
       PATH: `${join(dir, 'bin')}:${process.env['PATH'] ?? ''}`,
     },
   },

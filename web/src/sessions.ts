@@ -2,9 +2,7 @@
  * What the session list decides before it renders anything: which rows a search
  * box leaves, and which day heading each of the survivors goes under.
  *
- * It is a `.ts` for the same reason `conversation.ts` is — web tests run under
- * `node --test`, which strips types but cannot compile JSX, so a decision made
- * inside a `.tsx` silently leaves the test suite. `app.tsx` picks elements.
+ * Kept outside JSX so Node's type-stripping test runner can exercise it directly.
  */
 
 import type { Session } from '@tether/shared';

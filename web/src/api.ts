@@ -8,9 +8,7 @@
  * of information the server went to the trouble of sending.
  */
 
-import type { PermissionDecision, Session, SessionState, TrustReport } from '@tether/shared';
-
-import type { SeqEvent } from './conversation.ts';
+import type { Session, SessionState, TrustReport } from '@tether/shared';
 
 export type { Session, TrustReport };
 
@@ -186,7 +184,7 @@ export function removeSession(id: string): Promise<void> {
   return request(`/api/machines/${MACHINE}/sessions/${id}/forget`, { method: 'POST' });
 }
 
-/** Restart a dead row through the provider's own saved conversation. */
+/** Restart a dead row through the provider's own saved session. */
 export async function resumeSession(id: string): Promise<Session> {
   const body = await request<{ session: Session }>(
     `/api/machines/${MACHINE}/sessions/${id}/resume`,
@@ -195,103 +193,12 @@ export async function resumeSession(id: string): Promise<Session> {
   return body.session;
 }
 
-/**
- * The latest bounded conversation page, and the `seq` to follow it from. Step 1
- * of the `conv` handshake, and the only correct answer to a `refetch`. `before`
- * requests one older bounded page without changing that live cursor.
- */
-export function fetchConversation(id: string, before?: number): Promise<ConversationHistory> {
-  const page = before === undefined ? '' : `?${new URLSearchParams({ before: String(before) })}`;
-  return request(`/api/sessions/${id}/conversation${page}`);
-}
-
-/** Keep mirrored with the parser's hard limit in `server/src/web/conversation.ts`. */
-export const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
-export const MAX_MESSAGE_IMAGES = 4;
-export const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
-
-export type UploadedImage = {
-  id: string;
-  type: string;
-  size: number;
-  /** Absolute machine path placed in the prompt so the provider can read it. */
-  path: string;
-};
-
-/** Store pasted pixels privately before their absolute path is sent to the agent. */
-export function uploadImage(id: string, image: File): Promise<UploadedImage> {
-  return request(`/api/sessions/${id}/images`, {
-    method: 'POST',
-    headers: { 'content-type': image.type },
-    body: image,
-  });
-}
-
-/** The authenticated same-origin URL used by message thumbnails and full-size links. */
-export function imageUrl(sessionId: string, imageId: string): string {
-  return `/api/sessions/${encodeURIComponent(sessionId)}/images/${encodeURIComponent(imageId)}`;
-}
-
-/**
- * Answer a tool call the agent is blocked on. Authenticated by the same cookie
- * as everything else — this is the one request in the product that causes a
- * command to run on the user's machine, so it goes through the ordinary door.
- *
- * A `409` means the hold was already settled: the timer, another viewer, or a
- * second tap. It is reported, never retried — a retry is how one tap becomes
- * two answers.
- */
-export function answerPermission(
-  id: string,
-  callId: string,
-  decision: PermissionDecision,
-): Promise<void> {
-  return request(`/api/sessions/${id}/permission`, json('POST', { callId, decision }));
-}
-
-/**
- * Set a Claude Code pane's permission mode, and return the mode the **server
- * confirmed by reading the pane back**.
- *
- * The one option control that is a request rather than a keystroke, because it
- * is the one that needs a read: Shift+Tab cycles, so only the side that can see
- * the screen can know where the pane started and where it ended up. A rejection
- * is an {@link ApiError} like any other and its `code` says which — `unreadable`
- * (the screen never said, so nothing was pressed), `busy` (another attempt on
- * this pane had not finished, so nothing was pressed either) or `not_confirmed`
- * (keys were pressed and it did not arrive), whose body carries the mode the
- * pane was last seen in.
- */
-export function setPermissionMode(id: string, mode: string): Promise<{ mode: string }> {
-  return request(`/api/machines/${MACHINE}/sessions/${id}/permission-mode`, json('POST', { mode }));
-}
-
-export type ConversationHistory = {
-  seq: number;
-  events: SeqEvent[];
-  truncated?: true;
-  before?: number;
-  title?: string;
-  version?: string;
-};
-
-/**
- * The terminal and conversation channels. Both built from `location` so they
- * follow whatever host and scheme the page was served over — the server's Origin
- * guard compares the two, and a tunnel or reverse proxy changes both together.
- *
- * The terminal is addressed by tmux name and the conversation by registry id;
- * that is the server's split, not a slip.
- */
+/** Follow the host and scheme that served the page; proxies change both together. */
 export function termSocketUrl(tmuxName: string, clientId: string, output = true): string {
   return socketUrl(`api/sessions/${tmuxName}/term`, {
     client: clientId,
     output: output ? '1' : '0',
   });
-}
-
-export function convSocketUrl(id: string, since: number): string {
-  return socketUrl(`api/sessions/${id}/conv`, { since: String(since) });
 }
 
 function socketUrl(path: string, query: Record<string, string>): string {

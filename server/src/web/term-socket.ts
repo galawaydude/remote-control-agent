@@ -18,7 +18,9 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { ClientFrame, ServerFrame, Session } from '@tether/shared';
 
 import { getSessionByTmuxName, reconcileWithTmux } from '../machine/registry.ts';
+import { STATUS_POLL_MS, type Conversations } from '../machine/conversations.ts';
 import type { Terminals } from '../machine/terminal.ts';
+import { CODEX } from '../providers/codex/spawn.ts';
 import { DEFAULT_SOCKET, UnsafeArgumentError } from '../machine/tmux.ts';
 
 /** Enough for a pasted prompt; short enough that a socket cannot be a memory hog. */
@@ -51,7 +53,7 @@ const TERM_SCHEMA = {
     additionalProperties: false,
     // The client's identity for input de-duplication, not a credential: the
     // session cookie is what authenticates, and it has already been checked.
-    // `output=0` keeps the composer's socket but skips the hidden replay.
+    // `output=0` lets compatibility clients attach input-only without a replay.
     properties: { client: NAME, output: { type: 'string', enum: ['0', '1'] } },
   },
 } as const;
@@ -150,6 +152,7 @@ export function registerTermSocket(
   app: FastifyInstance,
   terminals: Terminals,
   db: DatabaseSync,
+  conversations: Conversations,
   tmuxSocket: string = DEFAULT_SOCKET,
 ): void {
   app.get<{
@@ -254,7 +257,39 @@ export function registerTermSocket(
         detach();
         return;
       }
-      socket.on('close', detach);
+      // Keep only the provider identity and liveness in sync while this terminal
+      // is open. This does not open or tail a transcript, and therefore does not
+      // make the compatibility conversation API eligible to hold permissions.
+      let syncingMetadata = false;
+      const row = getSessionByTmuxName(db, session);
+      const syncMetadata = async () => {
+        if (row === undefined || syncingMetadata || !alive()) return;
+        syncingMetadata = true;
+        try {
+          if ((await conversations.syncPaneMetadata(row)) === false && alive()) {
+            await closeFromRegistry();
+          }
+        } catch (error) {
+          app.log.warn({ err: error, session }, 'terminal metadata sync failed');
+        } finally {
+          syncingMetadata = false;
+        }
+      };
+      // Claude's pid record is cheap and exact, so read it before draining queued
+      // input. Codex's bounded rollout search can take longer and must not delay
+      // the terminal; it continues on the same background poll.
+      if (row?.provider === CODEX) syncMetadata();
+      else await syncMetadata();
+      if (!alive()) {
+        detach();
+        return;
+      }
+      const metadataPoll = setInterval(() => void syncMetadata(), STATUS_POLL_MS);
+      metadataPoll.unref();
+      socket.on('close', () => {
+        clearInterval(metadataPoll);
+        detach();
+      });
 
       const send = (frame: ServerFrame) => socket.send(JSON.stringify(frame));
 
@@ -268,9 +303,17 @@ export function registerTermSocket(
             if (output === 'enabling') return;
             output = 'enabling';
             try {
+              if (alive()) send({ c: 'history', phase: 'start' });
               await terminals.refresh(session, viewer, (bytes) => {
-                if (output === 'enabling' && alive()) socket.send(bytes);
-                if (output === 'enabling') output = true;
+                if (output !== 'enabling') return;
+                if (alive()) {
+                  // WebSocket ordering puts the captured bytes before `ready`.
+                  // The tmux repaint follows both; it updates the latest viewport
+                  // while a user already scrolled into the captured history.
+                  socket.send(bytes);
+                  send({ c: 'history', phase: 'ready' });
+                }
+                output = true;
               });
             } finally {
               if (output === 'enabling') output = false;

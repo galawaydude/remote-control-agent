@@ -125,14 +125,6 @@ test('controlKey leaves ordinary characters alone', () => {
 test('withSeq produces the wire frames the server parses', () => {
   assert.deepEqual(withSeq({ c: 'text', text: ';' }, 7), { c: 'text', seq: 7, text: ';' });
   assert.deepEqual(withSeq({ c: 'key', keys: ['C-c'] }, 8), { c: 'key', seq: 8, keys: ['C-c'] });
-  // The composer's frame: a whole message, submitted, and its newlines are the
-  // reason it is `input` and not `text` — the server delivers it through tmux's
-  // paste buffer, where `send-keys -l` would silently swallow them (report §3).
-  assert.deepEqual(withSeq({ c: 'input', text: 'one\ntwo' }, 9), {
-    c: 'input',
-    seq: 9,
-    text: 'one\ntwo',
-  });
 });
 
 /**
@@ -140,10 +132,8 @@ test('withSeq produces the wire frames the server parses', () => {
  * one running tether reaches it over plain HTTP at a non-loopback host, which is
  * an **insecure context**, and a browser withholds `crypto.randomUUID` there.
  * `TerminalView` called it while setting up its socket, so on a phone or a second
- * laptop the effect threw before `connect()` — no terminal socket at all, a chip
- * stuck on "Connecting…", and a composed message stuck on "Sending…" because the
- * sender the composer calls is filled in by that same effect. The machine serving
- * tether was unaffected, because `localhost` is a secure context, which is also
+ * laptop the effect threw before `connect()` and stayed on Connecting. The machine
+ * serving tether was unaffected, because `localhost` is a secure context, which is also
  * why `e2e/` never saw it: Playwright drives the app over loopback.
  *
  * So the crypto here is stubbed down to what an insecure context really offers.
